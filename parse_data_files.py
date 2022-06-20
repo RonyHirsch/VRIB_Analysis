@@ -22,6 +22,8 @@ OBJ_TIME = "objectiveQTime"
 OBJ_TARGET_LOC = "objectiveTargetLoc"
 OBJ_RT = "objectiveRTms"
 SUBJ_ANS = "subjectiveAwareness"
+SUBJ_ANS_IS1 = "isPAS1"
+SUBJ_ANS_IS12 = "isPAS12"
 VAL_ANS = "valenceJudgement"
 VAL_ANS_CORRECT = "isCorrectInValenceJudgement"
 BUSSTOP_GAZE_DUR = "busstopGazeDuration"
@@ -100,6 +102,9 @@ TRIAL_START_TIME = "RealTrialStart"  # datetime.timestamp!
 TRIAL_START = "TrialStart"  # datetime.time
 TRIAL_END = "TrialEnd"  # datetime.time
 TRIAL_DUR_SEC = 63  # each trial bus-ride was 1 minute and 3 seconds
+CONDITION = "condition"
+REPLAY = "Attended"
+GAME = "Unattended"
 # folders and file names
 PER_SUBJECT = "per_subject"
 
@@ -319,8 +324,8 @@ def load_trial_objQ_info(sub_path, trial_df):
     trial_df = trial_df[[TRIAL_NUMBER, TRIAL_STIM_ID, TRIAL_STIM_NAME, TRIAL_STIM_VAL, TRIAL_SCRAMBLED_LOCS,
                          CLUES_TAKEN, BEE_ANS, TRIAL_MONEY, BEE_CORRECT, BEE_SELECT_LOC,
                          OBJ_TIME, OBJ_TARGET_LOC]]
-    trial_df[OBJ_ANS], trial_df[OBJ_ANS_TIME] = get_obj_correct(correct_ans_loc, selected_ans_loc, is_correct)
-    trial_df[OBJ_RT] = trial_df[OBJ_ANS_TIME] - trial_df[OBJ_TIME]
+    trial_df.loc[:, OBJ_ANS], trial_df.loc[:, OBJ_ANS_TIME] = get_obj_correct(correct_ans_loc, selected_ans_loc, is_correct)
+    trial_df.loc[:, OBJ_RT] = trial_df[OBJ_ANS_TIME] - trial_df[OBJ_TIME]
     return trial_df
 
 
@@ -554,7 +559,11 @@ def load_sub_trial_data(sub_path):
     # get the times of trial start (bus starts moving, after ET validation) and end (bus stops, subject needs to select target bee)
     trial_start_times = get_trial_times(sub_unity_path)
     trial_data = pd.merge(trial_data, trial_start_times, on=TRIAL_NUMBER)
-    trial_data[TRIAL_END] = [(t + dt.timedelta(seconds=TRIAL_DUR_SEC)).time() for t in trial_data[TRIAL_START_TIME].tolist()]
+    trial_data.loc[:, TRIAL_END] = [(t + dt.timedelta(seconds=TRIAL_DUR_SEC)).time() for t in trial_data[TRIAL_START_TIME].tolist()]
+    trial_data.loc[trial_data[TRIAL_NUMBER] >= empatica_parser.REPLAY_TRIAL, CONDITION] = REPLAY
+    trial_data.loc[trial_data[TRIAL_NUMBER] < empatica_parser.REPLAY_TRIAL, CONDITION] = GAME
+    trial_data.loc[:, SUBJ_ANS_IS1] = np.where(trial_data[SUBJ_ANS] == 1, 1, 0)
+    trial_data.loc[:, SUBJ_ANS_IS12] = np.where((trial_data[SUBJ_ANS] == 1) | (trial_data[SUBJ_ANS] == 2), 1, 0)
     return trial_data, busstop_gaze_data
 
 
@@ -602,7 +611,7 @@ def extract_subject_data(sub_folder_path, sub_res_path):
             sub_trial_data.to_csv(os.path.join(sub_output_path, "sub_trial_data.csv"), index=False)
             sub_busstop_gaze_data.to_csv(os.path.join(sub_output_path, "sub_busstop_gaze_data.csv"), index=False)
         # parse subject empatica data
-        sub_peripheral_data = empatica_parser.load_sub_peripheral_data(sub_path, sub_trial_data, sub_busstop_gaze_data, sub_output_path, sub)
+        sub_trial_data, sub_peripheral_data = empatica_parser.load_sub_peripheral_data(sub_path, sub_trial_data, sub_busstop_gaze_data, sub_output_path, sub, sub_res_path)
         subject_data[sub] = {UNITY_OUTPUT_FOLDER: sub_trial_data, empatica_parser.EMPATICA_OUTPUT_FOLDER: sub_peripheral_data, ET_DATA_NAME: sub_busstop_gaze_data}
 
     return subject_data

@@ -12,6 +12,7 @@ import parse_data_files
 ACC = "ACC"
 BVP = "BVP"
 EDA = "EDA"
+EDA_EXPLORER = "EDA_EXPLORER"
 HR = "HR"
 IBI = "IBI"
 TEMP = "TEMP"
@@ -32,6 +33,16 @@ SAMPLE_RATE = "sample rate (Hz)"
 TIME_DELTA_MS = "time delta (ms)"
 TIMEZONE = tz.gettz('Israel')
 EMPATICA_OUTPUT_FOLDER = "empatica"
+EDA_EXPLORER = "eda_explorer"
+EDA_PEAK_FILENAME = "_PeakFeatures_Lit Review Based.csv"  # this is the name of the filter I used in EDA-Explorer
+EDA_NOISE_FILENAME = "_NoiseLabels_Binary.csv"
+EDA_NOISE_START = "StartTime"
+EDA_NOISE_END = "EndTime"
+EDA_NOISE_COLNAME = "BinaryLabels"
+EDA_PEAKS_AMP_COL = "amp"
+BEH_EDA_PEAK_CNT = "numOfPeaks"
+BEH_EDA_PEAK_AMP = "avgAmplitude"
+BEH_EDA_NOISE_COL = "edaIsNoise"
 
 REPLAY_TRIAL = 40
 
@@ -238,44 +249,44 @@ def add_range_data_column(data, additional_col_name, additional_df, start_col, e
     return data
 
 
-def preprocess_empatica_data(empatica_data, sub_busstop_gaze_data, sub_output_path):
+def preprocess_temperature_data(sub_trial_data, empatica_data, sub_busstop_gaze_data, sub_output_path):
     """
-    STEP 0: MOTION CORRECTION
-    Subjects were instructed not to move, and were sitting down for the entire experiment. 
-    - Salomon, et al.,2013 (Frontiers in behavioral neuroscience): measured temperature and reported no motion correction
-    - AheriNejad & Pollreisz, 2016 (Book chapter): used Empatica E4 (same as here), did no motion correction as subjects were instructed not to move. 
-    
-    In our experiment, subjects were instructed not to move and sat on a chair for the entire duration of the experiment. 
-    Naturally, they did move the hand with the sensor from time to time, but not in any abrupt movement. 
-    
-    Therefore, for now, this step is skipped. 
-    """
-    skipped = True
-
-    """
-    STEP 1: BASELINE CORRECTION
-    --> METHOD 1: SALOMON ET AL
-    With this method, for analysis of the evolution of temperature over the course of the trial, changes in temperature 
-    are calculated by subtracting the temperature at the start of the trial from all subsequent time points in that trial 
-    """
+        *** TEMPERATURE ***
+        --> METHOD : Salomon et al.,2013 (Frontiers in behavioral neuroscience)
+        With this method, for analysis of the evolution of temperature over the course of the trial, changes in temperature
+        are calculated by subtracting the temperature at the start of the trial from all subsequent time points in that trial
+        """
     empatica_data_temp_updated = preprocess_temperature_delta(empatica_data)
     temperature_data = empatica_data_temp_updated[TEMP]
+
     """
-    STEP 2: ADD GAZE DATA
+    *** GAZE ***
     We would like to cross the information of skin temperature with the information about the stimulus being in 
     the fovea of the subject's gaze
     """
     # Take only the gaze on the intact stimuli - gaze on scrambled bus stops is currently not interesting
     sub_busstop_gaze_data_intact = sub_busstop_gaze_data[sub_busstop_gaze_data[parse_data_files.IS_INTACT] == True]
+
+    # mark the temperature data samples with the valence of the trial
+    temperature_data.loc[:, parse_data_files.SUBJ_ANS_IS1] = -1  # default value
+    temperature_data.loc[:, parse_data_files.SUBJ_ANS_IS12] = -1  # default value
+
     # mark in the temperature data samples that occurred when subject's gaze was on an intact stimulus
     trials = temperature_data[parse_data_files.TRIAL_NUMBER].unique().tolist()
+    trials.remove(-1)  # -1 is not a real trial, but a default value
     for val in trials:
         additional_df_trial = sub_busstop_gaze_data_intact[sub_busstop_gaze_data_intact[parse_data_files.TRIAL_NUMBER] == val]
         data_trial = temperature_data[temperature_data[parse_data_files.TRIAL_NUMBER] == val]
+        # ADD TRIAL DATA TO TEMPERATURE DATA
+        beh_trial = sub_trial_data[sub_trial_data[parse_data_files.TRIAL_NUMBER] == val]
+        temperature_data.at[temperature_data[parse_data_files.TRIAL_NUMBER] == val, parse_data_files.SUBJ_ANS_IS1] = beh_trial[parse_data_files.SUBJ_ANS_IS1].tolist()[0]
+        temperature_data.at[temperature_data[parse_data_files.TRIAL_NUMBER] == val, parse_data_files.SUBJ_ANS_IS12] = beh_trial[parse_data_files.SUBJ_ANS_IS12].tolist()[0]
+
         for bustop in additional_df_trial[parse_data_files.BUSSTOP].unique().tolist():
             bustop_df_trial = additional_df_trial[additional_df_trial[parse_data_files.BUSSTOP] == bustop]
             for ind, row in bustop_df_trial.iterrows():
-                gazed_billboards = data_trial[(row[parse_data_files.GAZE_START] <= data_trial[TIME]) & (row[parse_data_files.GAZE_END] >= data_trial[TIME])]
+                gazed_billboards = data_trial[(row[parse_data_files.GAZE_START] <= data_trial[TIME]) & (
+                            row[parse_data_files.GAZE_END] >= data_trial[TIME])]
                 temperature_data.at[gazed_billboards.index, parse_data_files.BUSSTOP] = bustop
                 temperature_data.at[gazed_billboards.index, IS_GAZE] = 1
 
@@ -285,7 +296,117 @@ def preprocess_empatica_data(empatica_data, sub_busstop_gaze_data, sub_output_pa
     return empatica_data_temp_updated
 
 
-def load_sub_peripheral_data(sub_path, sub_trial_data, sub_busstop_gaze_data, sub_output_path, sub_code):
+def convert_cols_to_time(df, cols):
+    for col in cols:
+        for ind, row in df.iterrows():
+            try:
+                new_cell = dt.datetime.strptime(row[col], '%Y-%m-%d %H:%M:%S.%f').time()
+            except ValueError:
+                new_cell = dt.datetime.strptime(row[col], '%Y-%m-%d %H:%M:%S').time()
+            df.at[ind, col] = new_cell
+    return df
+
+
+def convert_utc_to_ist(df, cols):
+    for col in cols:
+        df.loc[:, col] = df[col].apply(lambda x: dt.datetime.combine(dt.date(1, 1, 1), x))  # convert to be able to add hours
+        df.loc[:, col] = df[col].apply(lambda x: (x + dt.timedelta(hours=3)).time())  # add the time and convert back to time
+    return df
+
+
+def load_preprocessed_eda(sub, sub_eda_file_path):
+    noise_file_path = os.path.join(sub_eda_file_path, f"{sub}{EDA_NOISE_FILENAME}")
+    noise_file = pd.read_csv(noise_file_path)
+    peak_file_path = os.path.join(sub_eda_file_path, f"{sub}{EDA_PEAK_FILENAME}")
+    peak_file = pd.read_csv(peak_file_path)
+    # NOTE: the timezone of Israel is 3 hours ahead of UTC which is the empatica E4 timestamp.
+    # This is why we need to add 3 hours to ALL timestamps in these files!
+    # Turn into time:
+    noise_df = convert_cols_to_time(noise_file, cols=[EDA_NOISE_START, EDA_NOISE_END])
+    peak_df = convert_cols_to_time(peak_file, cols=[peak_file.columns[0]])
+    # Convert UTC time to IST : add 3 hours
+    noise_df = convert_utc_to_ist(noise_df, cols=[EDA_NOISE_START, EDA_NOISE_END])
+    peak_df = convert_utc_to_ist(peak_df, cols=[peak_file.columns[0]])
+    return peak_df, noise_df
+
+
+def noise_based_trial_exclusion(beh_df, eda_noise_df):
+    """
+
+    :param beh_df: the trial behavior + ET data (as extracted from the Unity experiment)
+    :param eda_noise_df: a dataframe that is the output of "EDA Explorer" processing (ref below). In this dataframe,
+    the first column contains time-stamps that break the raw data into 5-second epochs.
+    The second column contains either a -1, 1, or 0 in each row, representing whether the corresponding epoch is a
+    noise (-1), is clean (1), or is questionable (0).
+    See:
+    Taylor, S., Jaques, N., Chen, W., Fedor, S., Sano, A., and Picard, R.
+    Automatic Identification of Artifacts in Electrodermal Activity Data" In Proc.
+    International Conference of the IEEE Engineering in Medicine and Biology Society (EMBC), Milan, Italy, August 2015.
+    :return:
+    """
+    beh_df.loc[:, BEH_EDA_NOISE_COL] = 0  # start with all trials being valid
+    eda_noise_df_noise = eda_noise_df[eda_noise_df[EDA_NOISE_COLNAME] != 1]  # all the invalied 5-sec time windows
+    for ind, row in eda_noise_df_noise.iterrows():  # for each noise row
+        row_start = row[EDA_NOISE_START]
+        row_end = row[EDA_NOISE_END]
+        for trial_ind, beh_row in beh_df.iterrows():
+            # if there is noise within the trial
+            if (beh_row[parse_data_files.TRIAL_START] <= row_start <= beh_row[parse_data_files.TRIAL_END]) or \
+                    (beh_row[parse_data_files.TRIAL_START] <= row_end <= beh_row[parse_data_files.TRIAL_END]):
+                beh_df.at[trial_ind, BEH_EDA_NOISE_COL] = 1
+    return beh_df
+
+
+def count_eda_peaks_per_trial(beh_df, eda_peaks):
+
+    beh_df.loc[:, BEH_EDA_PEAK_CNT] = 0  # start with having no peaks
+    beh_df.loc[:, BEH_EDA_PEAK_AMP] = float(0)
+    for ind, row in eda_peaks.iterrows():  # for each peak row
+        peak_time = row[eda_peaks.columns[0]]
+        peak_amp = row[EDA_PEAKS_AMP_COL]
+        for trial_ind, beh_row in beh_df.iterrows():
+            # if there is a peak within the trial
+            if (beh_row[parse_data_files.TRIAL_START] <= peak_time <= beh_row[parse_data_files.TRIAL_END]):
+                beh_df.at[trial_ind, BEH_EDA_PEAK_CNT] += 1
+                beh_df.at[trial_ind, BEH_EDA_PEAK_AMP] += peak_amp  # this is currently the sum. At the end, we'll divide the sum by BEH_EDA_PEAK_CNT to get the average
+
+    # the BEH_EDA_PEAK_AMP should be the AVERAGE amplitude: divide the sum by the number of peaks leading to it.
+    beh_df.loc[:, BEH_EDA_PEAK_AMP] = beh_df[BEH_EDA_PEAK_AMP] / beh_df[BEH_EDA_PEAK_CNT]
+    return beh_df
+
+
+def preprocess_eda_data(sub_trial_data, general_output_path, sub_code):
+    """
+    EDA is processed using EDA-EXPLORER
+    Taylor, S., Jaques, N., Chen, W., Fedor, S., Sano, A., and Picard, R.
+    Automatic Identification of Artifacts in Electrodermal Activity Data" In Proc.
+    International Conference of the IEEE Engineering in Medicine and Biology Society (EMBC), Milan, Italy, August 2015.
+    Here we parse the information from EDA-EXPLORER, correct the time shift (UTC TO IST) and add this information.
+    :param sub_trial_data:
+    :return:
+    """
+    eda_preprocessed_path = os.path.join(general_output_path, EDA_EXPLORER, sub_code)
+    if not os.path.isdir(eda_preprocessed_path):
+        print(f"ERROR: subject {sub_code} does not have pre-processed EDA data. This subject is SKIPPED during analysis")
+        return None
+    eda_peaks, eda_noise = load_preprocessed_eda(sub_code, eda_preprocessed_path)
+    # Mark trials where there was noise as measured in the noise file (BEH_EDA_NOISE_COL col)
+    sub_trial_data_eda_noise = noise_based_trial_exclusion(sub_trial_data, eda_noise)
+    sub_trial_data_eda_peaks = count_eda_peaks_per_trial(sub_trial_data_eda_noise, eda_peaks)
+    return sub_trial_data_eda_peaks, eda_peaks, eda_noise
+
+
+def preprocess_empatica_data(empatica_data, sub_busstop_gaze_data, sub_trial_data, sub_output_path, general_output_path, sub_code):
+    # preprocess the temperature data
+    empatica_data_temp_updated = preprocess_temperature_data(sub_trial_data, empatica_data, sub_busstop_gaze_data, sub_output_path)
+    # preprocess the EDA data and re-save sub trial data with it
+    sub_trial_data, eda_peaks, eda_noise = preprocess_eda_data(sub_trial_data, general_output_path, sub_code)
+    sub_trial_data.to_csv(os.path.join(sub_output_path, "sub_trial_data.csv"), index=False)
+    empatica_data_temp_updated[EDA_EXPLORER] = [eda_peaks, eda_noise]
+    return sub_trial_data, empatica_data_temp_updated
+
+
+def load_sub_peripheral_data(sub_path, sub_trial_data, sub_busstop_gaze_data, sub_output_path, sub_code, general_output_path):
     sub_empatica_path = os.path.join(sub_path, EMPATICA_OUTPUT_FOLDER)  # path to raw empatica data
     empatica_data = load_empatica_data(sub_empatica_path)  # load dict of empatica data
     # mark trials in each empatica data table: add a trial column
@@ -303,10 +424,10 @@ def load_sub_peripheral_data(sub_path, sub_trial_data, sub_busstop_gaze_data, su
         unified_empatica_data = unify_empatica_data(empatica_data)
         plot_empatica_data(sub_code, unified_empatica_data, sub_trial_data, sub_output_path)
         # Pre-process the raw empatica data
-        empatica_data = preprocess_empatica_data(empatica_data, sub_busstop_gaze_data, sub_output_path)
+        sub_trial_data, empatica_data = preprocess_empatica_data(empatica_data, sub_busstop_gaze_data, sub_trial_data, sub_output_path, general_output_path, sub_code)
         # save to a pickle of that dictionary
         fl = open(processed_empatica, 'ab')
         pickle.dump(empatica_data, fl)
         fl.close()
 
-    return empatica_data
+    return sub_trial_data, empatica_data

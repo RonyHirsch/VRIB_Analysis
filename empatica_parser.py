@@ -34,7 +34,7 @@ TIME_DELTA_MS = "time delta (ms)"
 TIMEZONE = tz.gettz('Israel')
 EMPATICA_OUTPUT_FOLDER = "empatica"
 EDA_EXPLORER = "eda_explorer"
-EDA_PEAK_FILENAME = "_PeakFeatures_Lit Review Based.csv"  # this is the name of the filter I used in EDA-Explorer
+EDA_PEAK_FILENAME = "_PeakFeatures_ConservativeLitReview.csv"  # this is the name of the filter I used in EDA-Explorer
 EDA_NOISE_FILENAME = "_NoiseLabels_Binary.csv"
 EDA_NOISE_START = "StartTime"
 EDA_NOISE_END = "EndTime"
@@ -48,6 +48,12 @@ REPLAY_TRIAL = 40
 
 
 def load_empatica_data(sub_empatica_path):
+    """
+    Load all empatica output log files into a dictionary structure where key=empatica file type (=measurement) and
+    value = dataframe containing all samples of this metric.
+    :param sub_empatica_path: path to empatica files folder
+    :return: dictionary : {k=empatica metric, v=df}
+    """
     empatica_data = dict()
     for dtype in DATA_TYPE_NAMES:
         data_file = [f for f in os.listdir(sub_empatica_path) if dtype in f][0]
@@ -86,9 +92,12 @@ def time_in_range(start, end, t):
 
 def parse_empatica_trial_data(empatica_data, sub_trial_data, sub_output_path):
     """
+    ALL this method does, is to insert each empatica data type df - a column denoting the trial number.
+    In each empatica file, row=sample, so after this method, each row has also information (=column) about
+    whether the sample is part of a trial, and which one
     :param empatica_data: dict of empatica data dataframes, output of load_empatica_data
     :param sub_trial_data: dataframe with all the beh + ET data of the subject, from parse_data_files
-    :return:
+    :return: empatica_data dictionary, just with an additional trial column for each df in the dict.
     """
 
     for col in [parse_data_files.TRIAL_START, parse_data_files.TRIAL_END]:
@@ -134,6 +143,13 @@ def normalize_time(time_to_normalize, first_time):
 
 
 def parse_empatica_valence_data(empatica_data, sub_trial_data):
+    """
+    For each empatica datatype df, add a column denoting the valence of the stimulus (0=neutral, 1=aversive, as per
+    the behavioral data files)
+    :param empatica_data: dict where k=data type, v=sample dataframe
+    :param sub_trial_data: df where row=trial, containing inforamtion about that trial including the stim valence
+    :return: empatica_data dict but with an additional valence column for each data type dataframe
+    """
     trials = sub_trial_data[parse_data_files.TRIAL_NUMBER].tolist()
     dtypes = list(empatica_data.keys())
     for data_type in dtypes:
@@ -158,6 +174,8 @@ def unify_empatica_data(empatica_data_dict):
 
 
 def plot_empatica_data(sub_code, empatica_df, sub_trial_data, save_path):
+    empatica_df = unify_empatica_data(empatica_df)  # first of all, unify the empatica data file into a single df
+
     x_axis = empatica_df[TIME_NORM]
 
     DTYPE = "data"
@@ -211,12 +229,15 @@ def plot_empatica_data(sub_code, empatica_df, sub_trial_data, save_path):
 
 
 def preprocess_temperature_delta(empatica_data_dict):
+    """
+    Calculate temperature delta according to Salomon, et al.,2013's method:
+    Subtract the skin temperature at the first time point from all subsequent time points for each trial.
+    :param empatica_data_dict:
+    :return:
+    """
     temperature_data = empatica_data_dict[TEMP]
     # take only actual trial samples
-    """
-    Calculate temperature delta according to Salomon, et al.,2013's method: 
-    Subtract the skin temperature at the first time point from all subsequent time points for each trial. 
-    """
+
     temperature_data[TEMP_COL_DELTA] = temperature_data[TEMP_COL]  # start by copying the temperature data
     trials = temperature_data[parse_data_files.TRIAL_NUMBER].unique()
     for trial in trials:
@@ -251,11 +272,20 @@ def add_range_data_column(data, additional_col_name, additional_df, start_col, e
 
 def preprocess_temperature_data(sub_trial_data, empatica_data, sub_busstop_gaze_data, sub_output_path):
     """
-        *** TEMPERATURE ***
-        --> METHOD : Salomon et al.,2013 (Frontiers in behavioral neuroscience)
-        With this method, for analysis of the evolution of temperature over the course of the trial, changes in temperature
-        are calculated by subtracting the temperature at the start of the trial from all subsequent time points in that trial
-        """
+    This method does 2 THINGS in temperature data processing:
+    1. Adds a dT column per trial (s.t. the first sampled temperature in each trial = 0, and the rest in that trial
+    are normalized by it)
+    2. Adds GAZE+BEH columns to the temperature sample data: each sample is marked by whether subject gazed at an INTACT
+    bus stop at that time, which bus stop it was, the vaLence of the image, and the SUBJECTIVE RATINGs (whether it was
+    "1" or not)
+
+    :param sub_trial_data: df where row=trial where we get the trial info from (subjective rating, valence)
+    :param empatica_data: dict where k=data type, v=df (we are interested in key=temperature)
+    :param sub_busstop_gaze_data: df where row=GAZE EVENT, columns = start, end, bus stop, intact or not
+    :param sub_output_path: output path
+    :return: the ENTIRE empatica data dictionary, with the temperature df updated with new columns.
+    :return: the ENTIRE empatica data dictionary, with the temperature df updated with new columns.
+    """
     empatica_data_temp_updated = preprocess_temperature_delta(empatica_data)
     temperature_data = empatica_data_temp_updated[TEMP]
 
@@ -270,6 +300,7 @@ def preprocess_temperature_data(sub_trial_data, empatica_data, sub_busstop_gaze_
     # mark the temperature data samples with the valence of the trial
     temperature_data.loc[:, parse_data_files.SUBJ_ANS_IS1] = -1  # default value
     temperature_data.loc[:, parse_data_files.SUBJ_ANS_IS12] = -1  # default value
+    temperature_data.loc[:, parse_data_files.SUBJ_ANS] = -1  # default value
 
     # mark in the temperature data samples that occurred when subject's gaze was on an intact stimulus
     trials = temperature_data[parse_data_files.TRIAL_NUMBER].unique().tolist()
@@ -281,6 +312,7 @@ def preprocess_temperature_data(sub_trial_data, empatica_data, sub_busstop_gaze_
         beh_trial = sub_trial_data[sub_trial_data[parse_data_files.TRIAL_NUMBER] == val]
         temperature_data.at[temperature_data[parse_data_files.TRIAL_NUMBER] == val, parse_data_files.SUBJ_ANS_IS1] = beh_trial[parse_data_files.SUBJ_ANS_IS1].tolist()[0]
         temperature_data.at[temperature_data[parse_data_files.TRIAL_NUMBER] == val, parse_data_files.SUBJ_ANS_IS12] = beh_trial[parse_data_files.SUBJ_ANS_IS12].tolist()[0]
+        temperature_data.at[temperature_data[parse_data_files.TRIAL_NUMBER] == val, parse_data_files.SUBJ_ANS] = beh_trial[parse_data_files.SUBJ_ANS].tolist()[0]
 
         for bustop in additional_df_trial[parse_data_files.BUSSTOP].unique().tolist():
             bustop_df_trial = additional_df_trial[additional_df_trial[parse_data_files.BUSSTOP] == bustop]
@@ -315,6 +347,14 @@ def convert_utc_to_ist(df, cols):
 
 
 def load_preprocessed_eda(sub, sub_eda_file_path):
+    """
+    Load the peak file and the noise file that are automatically outputted by the EDA-explorer program
+    (and parse the times correctly so that they will be time and not str)
+    :param sub: sub code
+    :param sub_eda_file_path: file path to the EDA-explorer data
+    :return: peak dataframe where row=peak event, noise dataframe where row=sample - and a column indicates whether the
+    sample is valid (1) or not (0 questionable, -1 noise)
+    """
     noise_file_path = os.path.join(sub_eda_file_path, f"{sub}{EDA_NOISE_FILENAME}")
     noise_file = pd.read_csv(noise_file_path)
     peak_file_path = os.path.join(sub_eda_file_path, f"{sub}{EDA_PEAK_FILENAME}")
@@ -358,6 +398,13 @@ def noise_based_trial_exclusion(beh_df, eda_noise_df):
 
 
 def count_eda_peaks_per_trial(beh_df, eda_peaks):
+    """
+    Add to trial df 2 columns, one indicating the number of EDA peaks in that trial, and the second one is the average
+    amplitude of those peaks.
+    :param beh_df: the df to add to
+    :param eda_peaks: the EDA peak information df (row=peak)
+    :return: beh_df with updated peak columns
+    """
 
     beh_df.loc[:, BEH_EDA_PEAK_CNT] = 0  # start with having no peaks
     beh_df.loc[:, BEH_EDA_PEAK_AMP] = float(0)
@@ -371,7 +418,7 @@ def count_eda_peaks_per_trial(beh_df, eda_peaks):
                 beh_df.at[trial_ind, BEH_EDA_PEAK_AMP] += peak_amp  # this is currently the sum. At the end, we'll divide the sum by BEH_EDA_PEAK_CNT to get the average
 
     # the BEH_EDA_PEAK_AMP should be the AVERAGE amplitude: divide the sum by the number of peaks leading to it.
-    beh_df.loc[:, BEH_EDA_PEAK_AMP] = beh_df[BEH_EDA_PEAK_AMP] / beh_df[BEH_EDA_PEAK_CNT]
+    beh_df.loc[:, BEH_EDA_PEAK_AMP] = beh_df[BEH_EDA_PEAK_AMP] / beh_df[BEH_EDA_PEAK_CNT]  # if 0, it comes out as nan
     return beh_df
 
 
@@ -418,12 +465,11 @@ def load_sub_peripheral_data(sub_path, sub_trial_data, sub_busstop_gaze_data, su
         empatica_data = pickle.load(fl)
         fl.close()
     else:
-        # add a column depicting if the stimulus in this trial was negative or neutral
+        # add a column depicting if the stimulus in this trial was aversive or neutral
         empatica_data = parse_empatica_valence_data(empatica_data, sub_trial_data)
-        # unify all empatica data types into a single dataframe
-        unified_empatica_data = unify_empatica_data(empatica_data)
-        plot_empatica_data(sub_code, unified_empatica_data, sub_trial_data, sub_output_path)
-        # Pre-process the raw empatica data
+        # plot all empatica data types in a single plot
+        plot_empatica_data(sub_code, empatica_data, sub_trial_data, sub_output_path)
+        # pre-process the raw empatica data
         sub_trial_data, empatica_data = preprocess_empatica_data(empatica_data, sub_busstop_gaze_data, sub_trial_data, sub_output_path, general_output_path, sub_code)
         # save to a pickle of that dictionary
         fl = open(processed_empatica, 'ab')

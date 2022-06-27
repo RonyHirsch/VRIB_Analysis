@@ -13,7 +13,6 @@ TRIAL_STIM_VAL = "stimValence"
 TRIAL_SCRAMBLED_LOCS = "scrambledLocations"
 CLUES_TAKEN = "cluesTaken"
 BEE_ANS = "beeScore"
-BEE_CORRECT = "beeCorrect"
 BEE_SELECT_LOC = "beeSelectedLocation"
 TRIAL_MONEY = "trialScore"
 OBJ_ANS = "objectiveIsCorrect"
@@ -107,6 +106,8 @@ REPLAY = "Attended"
 GAME = "Unattended"
 # folders and file names
 PER_SUBJECT = "per_subject"
+UAT = "unattended"
+AT = "attended"
 
 
 def label_valence(stim_number_row, col=TRIAL_STIM_ID):
@@ -253,7 +254,7 @@ def load_trial_bee_info(sub_path, trial_df):
     else:
         score_calc_name = [f for f in os.listdir(sub_path) if FILE_SCORE_CALC_ALTERNATIVE in f][0]
         score_calc_data = pd.read_csv(os.path.join(sub_path, score_calc_name), sep="\t", header=None)
-        score_calc_data.rename(columns={1: score_calc_data.iloc[0,0], 3: score_calc_data.iloc[0,2], 5: score_calc_data.iloc[0,4]}, inplace=True)
+        score_calc_data.rename(columns={1: score_calc_data.iloc[0, 0], 3: score_calc_data.iloc[0, 2], 5: score_calc_data.iloc[0, 4]}, inplace=True)
         score_calc_data.drop(columns=[0, 2, 4], inplace=True)
         score_calc_data = trial_to_score_data_alternative(score_calc_data)
     trial_df = pd.merge(trial_df, score_calc_data, on=TRIAL_NUMBER)
@@ -392,7 +393,7 @@ def helper_calculate_durs(df):
                 end = float(trial_data.loc[ind+1, 0])
                 new_df.at[ind, 0] = trial_data.loc[ind+1, 0]
                 new_df.at[ind, 1] = GAZE_DURATION
-                new_df.at[ind, 2] = (end - start) / 1000 # the difference between the stamps is in MILLISECONDS, / 1000 converts to seconds
+                new_df.at[ind, 2] = (end - start) / 1000  # the difference between the stamps is in MILLISECONDS, / 1000 converts to seconds
                 new_df.at[ind, 3] = trial
             elif row[1] == GAZE_END:
                 continue
@@ -448,6 +449,15 @@ def load_trial_busstop_gaze_duration(sub_path, trial_df):
 
 
 def trial_busstop_gaze_summary(trial_df):
+    """
+    Add summary (avg, std, min, max) columns for gaze duration & number of gaze periods (in trial), based on
+    the given dataframe, which contains columns per bus stop (gaze duration on the bus stop & # of periods).
+    Each row = trial, and so to create a summary column per trial, the intact/scrambled/all bus stops of that trial
+    are accumulated.
+    :param trial_df: row=trial, column=data, at this point the df has 10*2 gaze columns (10 bus stops, gaze duration,
+    # of periods).
+    :return: trial_df with the gaze summary columns
+    """
     all_busstop_dur_cols = [BUSSTOP_GAZE_DUR+str(i) for i in range(BUSSTOP_LAST-BUSSTOP_FIRST+1)]
     trial_df[BUSSTOP_GAZE_DUR_TOTAL] = trial_df[all_busstop_dur_cols].sum(axis=1)
     trial_df[BUSSTOP_GAZE_DUR_AVG_TOTAL] = trial_df[all_busstop_dur_cols].mean(axis=1)
@@ -483,6 +493,11 @@ def clean_replay(trial_df):
 
 
 def get_trial_times(sub_path):
+    """
+    From the BusBeesAndPlayer.BusMotion output log, take the TRIAL_START_TIME timestamp as the beginning of the trial
+    :param sub_path: path to subject data
+    :return: df with trial number and trial start time
+    """
     bus_motion_file = [f for f in os.listdir(sub_path) if FILE_BUS_MOTION in f][0]
     bus_data = pd.read_csv(os.path.join(sub_path, bus_motion_file), sep="\t", header=None)
     if bus_data.shape[0] < 2:  # bus motion data file exists but empty
@@ -501,6 +516,15 @@ def get_trial_times(sub_path):
 
 
 def parse_busstop_gaze(trial_data, sub_path):
+    """
+    Create a separate dataframe where row = GAZE (in some trial, on some bus stop). In this dataframe,
+    each gaze period (start, end) has its own row, detailing the beginning, end of gaze, the bus stop that
+    was gazed, the trial number, and whether the bus stop was intact in that trial (false=scrambled)
+    :param trial_data: the trial dataframe containing information about the scrambled bus stops in each trial
+    :param sub_path: the path of the subject data
+    :return: df where row=GAZE EVENT, and cols are: bus stop, trial number, start gaze time, end gaze time, is intact.
+    THIS IS A PER-SUBJECT DF
+    """
     # for each of the 10 busstops, load them and add trial information
     image_record_file = [f for f in os.listdir(sub_path) if IMAGE_RECORD in f and IMAGE in f]
 
@@ -512,7 +536,7 @@ def parse_busstop_gaze(trial_data, sub_path):
         # here I don't do try-except as if we were to not have this data we would have stopped before arriving here
         busstop_data = pd.read_csv(os.path.join(sub_path, [f for f in image_record_file if busstop_name in f][0]),sep="\t", header=None)
         busstop_data = helper_mark_trial(busstop_data)
-        busstop_start_and_end = busstop_data[busstop_data[1] != GAZE_DURATION]  # either start or end
+        busstop_start_and_end = busstop_data[busstop_data[1] != GAZE_DURATION]  # either start or end, gaze_duration is NOT RELIABLE
         time_start = dt.datetime.strptime(busstop_start_and_end.iloc[0, 1], '%Y-%m-%d %H:%M:%S.%f')  # this is the start time of the ENTIRE EXPERIMENT (i.e., Unity start time)
 
         trial_numbers_scrambled = set(trial_data[trial_data[TRIAL_SCRAMBLED_LOCS].str.contains(f"{busstop_number}")][TRIAL_NUMBER].tolist())
@@ -553,15 +577,19 @@ def load_sub_trial_data(sub_path):
         trial_data = trial_busstop_gaze_summary(trial_data)
     else:
         print(f"Bus stop gaze duration data lost / corrupt - no data")
-    busstop_gaze_data = parse_busstop_gaze(trial_data, sub_unity_path)
+
+    busstop_gaze_data = parse_busstop_gaze(trial_data, sub_unity_path)  # generate a row-per-gaze-event dataframe
     # in the replay levels, THE BEE DOES NOT MATTER, so all bee-related info should be NaN as subjects did not follow anything here
     trial_data = clean_replay(trial_data)
     # get the times of trial start (bus starts moving, after ET validation) and end (bus stops, subject needs to select target bee)
-    trial_start_times = get_trial_times(sub_unity_path)
+    trial_start_times = get_trial_times(sub_unity_path)  # get trial start times
     trial_data = pd.merge(trial_data, trial_start_times, on=TRIAL_NUMBER)
     trial_data.loc[:, TRIAL_END] = [(t + dt.timedelta(seconds=TRIAL_DUR_SEC)).time() for t in trial_data[TRIAL_START_TIME].tolist()]
+    # mark trials per their condition based on trial number
     trial_data.loc[trial_data[TRIAL_NUMBER] >= empatica_parser.REPLAY_TRIAL, CONDITION] = REPLAY
     trial_data.loc[trial_data[TRIAL_NUMBER] < empatica_parser.REPLAY_TRIAL, CONDITION] = GAME
+    # mark trials' by the TYPE of their SUBJECTIVE answer : if == 1, "SUBJ_ANS_IS1" col=True, else false
+    # same for SUBJ_ANS_IS12 (if subjective rating is 1 or 2)
     trial_data.loc[:, SUBJ_ANS_IS1] = np.where(trial_data[SUBJ_ANS] == 1, 1, 0)
     trial_data.loc[:, SUBJ_ANS_IS12] = np.where((trial_data[SUBJ_ANS] == 1) | (trial_data[SUBJ_ANS] == 2), 1, 0)
     return trial_data, busstop_gaze_data

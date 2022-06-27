@@ -27,6 +27,16 @@ VIOLIN_ALPHA = 1
 ALPHA_STEP = 0.3
 LINE_WIDTH = 0.5
 
+F_HEADER = 16
+F_AXES_TITLE = 14
+F_HORIZ_LINES = 11
+XLABELPAD = 20
+YLABELPAD = 20
+BUFFER = 0.01
+W = 10
+H = 7.5
+DPI = 1000
+
 
 def plot_bar(df, x_col_name, y_col_name, plot_title, plot_x_name, plot_y_name, save_path, save_name, hue_col_name=None,
              x_col_axis_order=None, conf_interval=None, palette=None, y_tick_interval=5, x_axis_names=None,
@@ -119,7 +129,7 @@ def make_it_rain(df, x_col_name, y_col_name, x_col_color_order, violin_alpha=VIO
 def plot_raincloud(df, x_col_name, y_col_name, plot_title, plot_x_name, plot_y_name, save_path, save_name,
                    x_col_color_order=None, y_tick_interval=5, y_tick_min=None, y_tick_max=None,
                    x_axis_names=None, y_tick_names=None, group_col_name=None, group_name_mapping=None, x_values=None,
-                   add_horizontal_line=None):
+                   add_horizontal_line=None, alpha_step=ALPHA_STEP, valpha=VIOLIN_ALPHA, group_name=None):
     gc.collect()
     plt.clf()
     plt.figure()
@@ -127,14 +137,16 @@ def plot_raincloud(df, x_col_name, y_col_name, plot_title, plot_x_name, plot_y_n
 
     if group_col_name is not None:
         labels = list()
-        valpha = VIOLIN_ALPHA
         malpha = SCATTER_MARKER_ALPHA
-        group_name = re.sub('([A-Z])', r' \1', group_col_name).title()
+        group_name = re.sub('([A-Z])', r' \1', group_col_name).title() if group_name is None else group_name
         i = 0
         for val in df[group_col_name].unique():
             if group_name_mapping is not None:
                 if not isinstance(val, str):
-                    label = group_name_mapping[str(val)]
+                    try:
+                        label = group_name_mapping[val]
+                    except KeyError:
+                        label = group_name_mapping[str(val)]
                 else:
                     label = group_name_mapping[val]
             else:
@@ -142,8 +154,8 @@ def plot_raincloud(df, x_col_name, y_col_name, plot_title, plot_x_name, plot_y_n
             data = df[df[group_col_name] == val]
             vio = make_it_rain(data, x_col_name, y_col_name, x_col_color_order[i], violin_alpha=valpha,
                                marker_alpha=malpha, x_values=x_values)
-            valpha -= ALPHA_STEP
-            malpha -= ALPHA_STEP
+            valpha -= alpha_step
+            malpha -= alpha_step
             i += 1
             vcolor = vio.get_facecolor().flatten()
             labels.append((mpatches.Patch(color=vcolor), label))
@@ -244,4 +256,169 @@ def line_plot(df, x_col_name, y_col_names, plot_title, plot_x_name, plot_y_name,
     plt.cla()
     plt.close()
     gc.collect()
+    return
+
+
+def plot_avg_line(title, trial_df_list, avg_col_list, se_col_list=None, label_list=None, x_name="", y_name="",
+                  color_list=None, x_tick_intervals=4, significance_bars_dict=None,
+                  save=False, save_name="", save_path="", sub_folder=""):
+    plt.clf()
+    plt.figure()
+    sns.reset_orig()
+    # x axis
+    trials_num = [t.shape[0] for t in trial_df_list]
+    trials = [np.arange(0, n, 1) for n in trials_num]  # this will be the x axis
+
+    # plot Y boundary range
+    minimal = 1000000000
+    maximal = -100000000
+    if se_col_list is not None:
+        for i in range(len(se_col_list)):
+            if se_col_list[i] is not None:
+                trial_df_list[i][se_col_list[i]].fillna(0, inplace=True)
+                lower = [x - se for x, se in zip(trial_df_list[i][avg_col_list[i]], trial_df_list[i][se_col_list[i]])]
+                upper = [x + se for x, se in zip(trial_df_list[i][avg_col_list[i]], trial_df_list[i][se_col_list[i]])]
+            else:
+                lower = trial_df_list[i][avg_col_list[i]]
+                upper = trial_df_list[i][avg_col_list[i]]
+            lowest = min(lower)
+            highest = max(upper)
+            minimal = min(minimal, lowest)
+            maximal = max(maximal, highest)
+
+    else:
+        for i in range(len(avg_col_list)):
+            if avg_col_list[i] is not None:
+                lower = trial_df_list[i][avg_col_list[i]]
+                upper = trial_df_list[i][avg_col_list[i]]
+                lowest = min(lower)
+                highest = max(upper)
+                minimal = min(minimal, lowest)
+                maximal = max(maximal, highest)
+
+    # colors
+    if color_list is None:
+        colors = sns.color_palette("colorblind", len(avg_col_list))
+    else:
+        colors = color_list
+
+    # plot
+    for i in range(len(trial_df_list)):
+        plt.plot(trials[i], trial_df_list[i][avg_col_list[i]], ls='-', color=colors[i], label=label_list[i])
+        if se_col_list is not None:  # if data has SE
+            if se_col_list[i] is not None:
+                plt.fill_between(trials[i],
+                                 [x - se for x, se in zip(trial_df_list[i][avg_col_list[i]], trial_df_list[i][se_col_list[i]])],
+                                 [x + se for x, se in zip(trial_df_list[i][avg_col_list[i]], trial_df_list[i][se_col_list[i]])],
+                                 alpha=.2, color=colors[i])
+
+    # do we want to add gray bars that denote significance
+    if significance_bars_dict is not None:
+        for k in significance_bars_dict.keys():
+            for x_start, x_end in significance_bars_dict[k]["x"]:
+                xbar = [x for x in range(int(x_start), int(x_end) + 1)]
+                ybar = [significance_bars_dict[k]["y"]] * len(xbar)
+                plt.plot(xbar, ybar, color="gray", linewidth=6, alpha=0.5)
+
+    plt.ylim([minimal - BUFFER/2, maximal + BUFFER/2])
+    plt.yticks(np.arange(minimal - BUFFER/2, maximal + BUFFER/2, 0.004), labels=[f"{i:.3f}" for i in np.arange(minimal - BUFFER/2, maximal + BUFFER/2, 0.004)])
+
+    plt.xlim([0, trial_df_list[0].shape[0]])
+    x_tick_div = int(max(trials_num) / x_tick_intervals)
+    plt.xticks(np.arange(0, max(trials_num) + x_tick_intervals, x_tick_div))
+
+    plot_title = f"{title.title()}"
+    plt.title(plot_title, fontsize=F_HEADER)
+    plt.xlabel(x_name, fontsize=F_AXES_TITLE, labelpad=XLABELPAD)
+    plt.ylabel(y_name, fontsize=F_AXES_TITLE, labelpad=YLABELPAD)
+    plt.legend()
+
+    figure = plt.gcf()  # get current figure
+    figure.set_size_inches(W, H)
+    plt.savefig(os.path.join(save_path, f"LINE_{save_name}.png"), dpi=DPI)
+    plt.clf()
+    plt.close()
+    return
+
+
+def plot_avg_line_dict(title, trial_df_dict, avg_col_list, se_col_list=None, label_list=None, x_name="", y_name="",
+                       color_list=None, x_tick_intervals=4, significance_bars_dict=None,
+                       save=False, save_name="", save_path="", sub_folder=""):
+    plt.clf()
+    plt.figure()
+    sns.reset_orig()
+    # x axis
+    trials_num = {key: trial_df_dict[key].shape[0] for key in trial_df_dict.keys()}
+    trials = {key: np.arange(0, trials_num[key], 1) for key in trials_num.keys()}  # this will be the x axis
+
+    # plot Y boundary range
+    minimal = 1000000000
+    maximal = -100000000
+    if se_col_list is not None:
+        for key in se_col_list.keys():
+            if se_col_list[key] is not None:
+                trial_df_dict[key][se_col_list[key]].fillna(0, inplace=True)
+                lower = [x - se for x, se in zip(trial_df_dict[key][avg_col_list[key]], trial_df_dict[key][se_col_list[key]])]
+                upper = [x + se for x, se in zip(trial_df_dict[key][avg_col_list[key]], trial_df_dict[key][se_col_list[key]])]
+            else:
+                lower = trial_df_dict[key][avg_col_list[key]]
+                upper = trial_df_dict[key][avg_col_list[key]]
+            lowest = min(lower)
+            highest = max(upper)
+            minimal = min(minimal, lowest)
+            maximal = max(maximal, highest)
+
+    else:
+        for key in avg_col_list.keys():
+            if avg_col_list[key] is not None:
+                lower = trial_df_dict[key][avg_col_list[key]]
+                upper = trial_df_dict[key][avg_col_list[key]]
+                lowest = min(lower)
+                highest = max(upper)
+                minimal = min(minimal, lowest)
+                maximal = max(maximal, highest)
+
+    # colors
+    if color_list is None:
+        colors = sns.color_palette("colorblind", len(avg_col_list))
+    else:
+        colors = color_list
+
+    # plot
+    for key in trial_df_dict.keys():
+        plt.plot(trials[key], trial_df_dict[key][avg_col_list[key]], ls='-', color=colors[key], label=label_list[key])
+        if se_col_list is not None:  # if data has SE
+            if se_col_list[key] is not None:
+                plt.fill_between(trials[key],
+                                 [x - se for x, se in zip(trial_df_dict[key][avg_col_list[key]], trial_df_dict[key][se_col_list[key]])],
+                                 [x + se for x, se in zip(trial_df_dict[key][avg_col_list[key]], trial_df_dict[key][se_col_list[key]])],
+                                 alpha=.2, color=colors[key])
+
+    # do we want to add gray bars that denote significance
+    if significance_bars_dict is not None:
+        for k in significance_bars_dict.keys():
+            for x_start, x_end in significance_bars_dict[k]["x"]:
+                xbar = [x for x in range(int(x_start), int(x_end) + 1)]
+                ybar = [significance_bars_dict[k]["y"]] * len(xbar)
+                plt.plot(xbar, ybar, color="gray", linewidth=6, alpha=0.5)
+
+    plt.ylim([minimal - BUFFER/2, maximal + BUFFER/2])
+    plt.yticks(np.arange(minimal - BUFFER/2, maximal + BUFFER/2, 0.004), labels=[f"{i:.3f}" for i in np.arange(minimal - BUFFER/2, maximal + BUFFER/2, 0.004)])
+
+    some_key = list(trial_df_dict.keys())[0]
+    plt.xlim([0, trial_df_dict[some_key].shape[0]])
+    x_tick_div = int(trials_num[some_key] / x_tick_intervals) # all length are the same, so it is OK not to calculate max of trials_num
+    plt.xticks(np.arange(0, trials_num[some_key] + x_tick_intervals, x_tick_div))
+
+    plot_title = f"{title.title()}"
+    plt.title(plot_title, fontsize=F_HEADER)
+    plt.xlabel(x_name, fontsize=F_AXES_TITLE, labelpad=XLABELPAD)
+    plt.ylabel(y_name, fontsize=F_AXES_TITLE, labelpad=YLABELPAD)
+    plt.legend()
+
+    figure = plt.gcf()  # get current figure
+    figure.set_size_inches(W, H)
+    plt.savefig(os.path.join(save_path, f"LINE_{save_name}.png"), dpi=DPI)
+    plt.clf()
+    plt.close()
     return

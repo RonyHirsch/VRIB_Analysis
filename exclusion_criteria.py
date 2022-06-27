@@ -26,11 +26,12 @@ def test_unattended(sub, un_df):
     binom_test = binomtest(k=num_pas_1_obj_correct, n=num_pas_1, p=OBJ_CHANCE_LEVEL, alternative='greater')
     binom_pval = binom_test.pvalue
     binom_ci = binom_test.proportion_ci(confidence_level=OBJ_CHANCE_LEVEL_CONFIDENCE)
+    binom_pval_str = str(round(binom_pval, 3))
+    binom_ci_str = f"[{str(round(binom_ci.low, 3))}, {str(round(binom_ci.high, 3))}]"
     if binom_pval < OBJ_CHANCE_LEVEL_PVAL:
-        binom_pval_str = str(round(binom_pval, 3))
-        binom_ci_str = f"[{str(round(binom_ci.low, 3))}, {str(round(binom_ci.high, 3))}]"
         print(f"SUBJECT {sub} EXCLUDED DUE TO BEHAVIOR: objective performance in PAS-1 is {num_pas_1_obj_correct} of {num_pas_1} trials ({round(100*(num_pas_1_obj_correct/num_pas_1), 3)}%); p={binom_pval_str} < {OBJ_CHANCE_LEVEL_PVAL}, CI={binom_ci_str}")
         return 1
+    print(f"SUBJECT {sub}: objective performance in PAS-1 is {num_pas_1_obj_correct} of {num_pas_1} trials ({round(100 * (num_pas_1_obj_correct / num_pas_1), 3)}%); p={binom_pval_str} >= {OBJ_CHANCE_LEVEL_PVAL}, CI={binom_ci_str}")
     return 0
 
 

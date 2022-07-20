@@ -12,8 +12,10 @@ SUB = "Subject"
 INTACT = "Intact"
 SCRAMBLED = "Scrambled"
 
+cond_map = {parse_data_files.UAT: "UAT", parse_data_files.AT: "AT"}
 
-def plot_avg_gaze(all_subs_df, save_path):
+
+def plot_avg_gaze(all_subs_df, save_path, cond_name=" "):
     subs = all_subs_df[SUB].unique().tolist()
 
     intact_df = all_subs_df[[SUB, parse_data_files.SUBJ_ANS, parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT]]
@@ -30,9 +32,9 @@ def plot_avg_gaze(all_subs_df, save_path):
     ratings = [1, 2, 3, 4]
     filler_df = pd.DataFrame(list(itertools.product(subs, ratings))).rename(columns={0: SUB, 1: parse_data_files.SUBJ_ANS})
     result_df = pd.merge(filler_df, df, on=[SUB, parse_data_files.SUBJ_ANS], how='left')
-    result_df.fillna(0, inplace=True)
+    #result_df.fillna(0, inplace=True)
 
-    y_name = "Average Gaze Duration (Seconds)"
+    y_name = "Gaze Duration"
     y_save_name = re.sub(r'(?<!^)(?=[A-Z])', '_', parse_data_files.BUSSTOP_GAZE_DUR_AVG_TOTAL).lower()
     x_name = re.sub('([A-Z])', r' \1', parse_data_files.SUBJ_ANS).title()
     x_save_name = re.sub(r'(?<!^)(?=[A-Z])', '_', parse_data_files.SUBJ_ANS).lower()
@@ -41,27 +43,27 @@ def plot_avg_gaze(all_subs_df, save_path):
 
     ymin = 0  # gaze duration cannot be negative
     y_max_val = max(all_subs_df[parse_data_files.BUSSTOP_GAZE_DUR_AVG_TOTAL])
-    ymax = int(math.ceil(y_max_val / 10.0)) * 10  # round up to the nearest 10
+    ymax = int(math.ceil(y_max_val / 10.0)) * 10  # round up to the nearest 10  - DEPRECATED, TO MAKE THE PLOTS UNIFORM ACROSS CONDITIONS
     y_tick_skip = 1 if ymax - ymin < 11 else 5
 
     plotter.plot_raincloud(df=df, x_col_name=parse_data_files.SUBJ_ANS,
                            y_col_name="Average_Gaze",
-                           plot_title=f"{y_name} Per {x_name}",
-                           plot_x_name=parse_data_files.SUBJ_ANS,
-                           plot_y_name="Average Gaze Duration",
+                           plot_title=f"{y_name} Per {x_name} in {cond_map[cond_name]}",
+                           plot_x_name="Subjective Awareness Rating",
+                           plot_y_name="Average Gaze Duration (Seconds)",
                            save_path=save_path, save_name=f"{y_save_name}_over_{x_save_name}",
-                           y_tick_interval=y_tick_skip, y_tick_min=ymin, y_tick_max=ymax,
-                           x_axis_names=x_axis, y_tick_names=None,
+                           y_tick_interval=y_tick_skip, y_tick_min=ymin, y_tick_max=7,
+                           x_axis_names=x_axis, x_values=x_axis_vals, y_tick_names=None,
                            group_col_name="Image Type",
                            group_name_mapping={"True": INTACT, "False": SCRAMBLED},
-                           x_col_color_order=[["#004346", "#004346", "#004346", "#004346"], ["#508991", "#508991", "#508991", "#508991"]],
-                           x_values=x_axis_vals, alpha_step=0, valpha=0.6)
+                           x_col_color_order=[["#55868C", "#55868C", "#55868C", "#55868C"], ["#C8AB83", "#C8AB83", "#C8AB83", "#C8AB83"]],
+                          alpha_step=0, valpha=0.6)
 
     df.to_csv(os.path.join(save_path, "avg_gaze_duration_per_vis_intact_scrambled.csv"))
     return
 
 
-def analyze_valence_gaze(all_subs_df, save_path):
+def analyze_valence_gaze(all_subs_df, save_path, cond_name):
     relevant_cols = [SUB, parse_data_files.SUBJ_ANS, parse_data_files.TRIAL_NUMBER, parse_data_files.TRIAL_STIM_VAL, parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT, parse_data_files.BUSSTOP_GAZE_DUR_AVG_SCRAMBLED]
     df = all_subs_df[relevant_cols]
     # first, process df into a long format and save it
@@ -107,17 +109,18 @@ def analyze_valence_gaze(all_subs_df, save_path):
             small_df.rename(columns={f"{parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT}_PAS{i}_VAL{val}": parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT}, inplace=True)
             plot_res_list.append(small_df)
     df_for_plot = pd.concat(plot_res_list)  # VERTICALLY
-    df_for_plot.fillna(0, inplace=True)
-    plotter.plot_raincloud(df_for_plot, parse_data_files.SUBJ_ANS, parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT, "Average Gaze Duration (Intact) Per Visibility",
+    #df_for_plot.fillna(0, inplace=True)
+    plotter.plot_raincloud(df_for_plot, parse_data_files.SUBJ_ANS, parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT, f"Gaze Duration (Intact) Per Visibility in {cond_map[cond_name]}",
                            "Subjective Awareness Rating", "Average Gaze Duration (Seconds)",
                            save_path=save_path, save_name="PAS_avg_gaze_duration_intact",
-                           x_col_color_order=[["#22395B", "#22395B", "#22395B", "#22395B"],
-                                              ["#88292F", "#88292F", "#88292F", "#88292F"]],
-                           y_tick_interval=1, y_tick_min=0, y_tick_max=None,
+                           x_col_color_order=[["#6DB1BF", "#6DB1BF", "#6DB1BF", "#6DB1BF"],
+                                              ["#F39A9D", "#F39A9D", "#F39A9D", "#F39A9D"]],
+                           y_tick_interval=1, y_tick_min=0, y_tick_max=7,
                            x_axis_names=["1", "2", "3", "4"], y_tick_names=None, group_col_name="Stimulus",
-                           group_name_mapping=None, x_values=[1, 2, 3, 4])
+                           group_name_mapping=None, x_values=[1, 2, 3, 4], alpha_step=0.05, valpha=0.8)
 
     # in visibility-1, plot aversive v neutral
+    """
     plot_res_list = list()
     for i in [0, 1]:  # JUST FOR 1 AND 2-4 COLLAPSED
         small_df = result_df[[SUB, f"{parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT}_PAS1_VAL{i}"]]
@@ -125,15 +128,16 @@ def analyze_valence_gaze(all_subs_df, save_path):
         small_df.rename(columns={f"{parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT}_PAS1_VAL{i}": f"{parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT}_PAS1"}, inplace=True)
         plot_res_list.append(small_df)
     df_for_plot = pd.concat(plot_res_list)  # VERTICALLY
-    df_for_plot.fillna(0, inplace=True)
+    #df_for_plot.fillna(0, inplace=True)
     plotter.plot_raincloud(df_for_plot, "Valence", f"{parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT}_PAS1",
                            "Average Gaze Duration (Intact) Per Valence in Invisible Trials",
                            "Valence", "Average Gaze Duration (Seconds)",
                            save_path=save_path, save_name="PAS1_avg_gaze_duration_intact_per_valence",
-                           x_col_color_order=[["#22395B", "#88292F"]],
-                           y_tick_interval=1, y_tick_min=0, y_tick_max=7,
+                           x_col_color_order=[["#6DB1BF", "#F39A9D"]],
+                           y_tick_interval=1, y_tick_min=0, y_tick_max=10,
                            x_axis_names=["Neutral", "Aversive"], y_tick_names=None, group_col_name=None,
-                           group_name_mapping=None, x_values=[0, 1])
+                           group_name_mapping=None, x_values=[0, 1], alpha_step=0.1, valpha=0.8)
+    """
     return
 
 
@@ -166,10 +170,10 @@ def et_analysis(all_subs_df, save_path):
         subs_df_cond = conds[condition]
 
         # Descriptive: For each visibility rating, do they gaze at the stimuli?
-        plot_avg_gaze(subs_df_cond, cond_output_path)
+        plot_avg_gaze(subs_df_cond, cond_output_path, condition)
 
         # ANALYSIS : is there a difference in gaze patterns between aversive and neutral stimuli within each visibility rating?
-        analyze_valence_gaze(subs_df_cond, cond_output_path)
+        analyze_valence_gaze(subs_df_cond, cond_output_path, condition)
 
     # create comparison
     comp_output_path = os.path.join(et_output_path, "comparison")

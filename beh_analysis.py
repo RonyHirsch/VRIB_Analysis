@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import os
 import itertools
 import parse_data_files
@@ -69,6 +70,8 @@ def pas_comparison_cond(all_subs_df, save_path):
     df_PAS_stats_unified = df_PAS_stats_unified.loc[:, ~df_PAS_stats_unified.columns.duplicated()]
     df_PAS_stats_unified.reset_index(inplace=True)
     df_PAS_stats_unified.to_csv(os.path.join(save_path, f"{PAS}_rate_per_sub.csv"))
+    wide = df_PAS_stats_unified.pivot(index="Subject", columns="subjectiveAwareness")
+    wide.to_csv(os.path.join(save_path, f"{PAS}_rate_per_sub_wide.csv"))
 
     # trial PAS ratings per condition: attended, unattended
     for_plot_UA = df_PAS_stats_unified[["Subject", "subjectiveAwareness", "UNATTENDED_ALL_Average_PAS"]]
@@ -100,11 +103,11 @@ def pas_comparison_cond(all_subs_df, save_path):
                            "Subjective Awareness Rating", "Average % of Trials",
                            save_path=save_path, save_name="PAS_rate_across_subs_UAT",
                            x_col_color_order=[
-                               ["#88292F", "#88292F", "#88292F", "#88292F"],
-                               ["#22395B", "#22395B", "#22395B", "#22395B"]],
+                               ["#F39A9D", "#F39A9D", "#F39A9D", "#F39A9D"],
+                               ["#6DB1BF", "#6DB1BF", "#6DB1BF", "#6DB1BF"]],
                            y_tick_interval=25, y_tick_min=0, y_tick_max=100,
                            x_axis_names=["1", "2", "3", "4"], y_tick_names=None, group_col_name="Stimulus",
-                           group_name_mapping=None, x_values=[1, 2, 3, 4], alpha_step=0.25, valpha=0.65)
+                           group_name_mapping=None, x_values=[1, 2, 3, 4], alpha_step=0.1, valpha=0.8, is_right=True)
 
 
     df_PAS_stats_unified_across_subs_avg = df_PAS_stats_unified.groupby(["subjectiveAwareness"]).mean()
@@ -131,35 +134,45 @@ def pas_obj_perf(all_subs_df, save_path):
     result_list = list()
     for rating in pas_ratings:
         if rating != "234":
-            df = all_subs_df[all_subs_df[parse_data_files.SUBJ_ANS] == rating]  # PAS = rating trials
+            try:
+                df = all_subs_df[all_subs_df[parse_data_files.SUBJ_ANS] == rating]  # PAS = rating trials
+            except KeyError:  # No such ratings
+                df = None
         else:  # this is for 2-3-4 collapsed
-            df = all_subs_df[all_subs_df[parse_data_files.SUBJ_ANS] != 1]
-        pcntgs_per_sub = calculate_pcnt_correct(df, filler_df, parse_data_files.OBJ_ANS, rating)
+            try:
+                df = all_subs_df[all_subs_df[parse_data_files.SUBJ_ANS] != 1]
+            except KeyError:
+                df = pd.DataFrame()
+        if not df.empty:
+            pcntgs_per_sub = calculate_pcnt_correct(df, filler_df, parse_data_files.OBJ_ANS, rating)
+        else:
+            pcntgs_per_sub = pd.concat([filler_df, pd.DataFrame({f"pcntCorrectInObj_{rating}": [np.nan] * len(subs)})], axis=1)
         result_list.append(pcntgs_per_sub)
 
     result_list_by_sub = [df.set_index(SUB) for df in result_list]  # set subject as index to concatenate by
     result_df = pd.concat(result_list_by_sub, axis=1)
     result_df = result_df.loc[:, ~result_df.columns.duplicated()]
     result_df.reset_index(inplace=True)
-    result_df.to_csv(os.path.join(save_path, f"objective_correct_per_pas.csv"))
+    result_df.to_csv(os.path.join(save_path, f"objective_correct_per_pas.csv"), index=False)
 
     plot_res_list = list()
-    for i in [1, 234]:  # JUST FOR 1 AND 2-4 COLLAPSED
+    for i in [1, 2, 3, 4, "234"]:
         small_df = result_df[["Subject", f"pcntCorrectInObj_{i}"]]
-        small_df["subjectiveAwareness"] = i if i==1 else 2
+        small_df["subjectiveAwareness"] = i
         small_df.rename(columns={f"pcntCorrectInObj_{i}": "pcntCorrectInObj"}, inplace=True)
         small_df = small_df.sort_values(by=SUB).reset_index()
         plot_res_list.append(small_df)
     df_for_plot = pd.concat(plot_res_list)
+    df_for_plot.to_csv(os.path.join(save_path, "PAS_pcnt_correct_in_objective_long.csv"), index=False)
     plotter.plot_raincloud(df_for_plot, "subjectiveAwareness", "pcntCorrectInObj", "Overall Performance in Objective Task Per Visibility",
                            "Subjective Awareness Rating", "% Correct in Objective Task",
                            save_path=save_path, save_name="PAS_pcnt_correct_in_objective",
                            x_col_color_order=[["#559CAD", "#559CAD", "#559CAD", "#559CAD"]],
                            y_tick_interval=25, y_tick_min=0, y_tick_max=100,
-                           x_axis_names=["1", "2-4"], y_tick_names=None, group_col_name=None,
-                           group_name_mapping=None, x_values=[1, 2], add_horizontal_line=25)
+                           x_axis_names=["1", "2", "3", "4"], y_tick_names=None, group_col_name=None,
+                           group_name_mapping=None, x_values=[1, 2, 3, 4], add_horizontal_line=25)
 
-    return result_df
+    return df_for_plot
 
 
 def pas_val_perf(all_subs_df, save_path):
@@ -191,21 +204,22 @@ def pas_val_perf(all_subs_df, save_path):
 
     # now plot
     plot_res_list = list()
-    for i in [1, 234]:  # JUST FOR 1 AND 2-4 COLLAPSED
+    for i in [1, 2, 3, 4, "234"]:
         small_df = result_df[["Subject", f"ValenceCorrectProportion_{i}"]]
-        small_df["subjectiveAwareness"] = i if i == 1 else 2
+        small_df["subjectiveAwareness"] = i
         small_df.rename(columns={f"ValenceCorrectProportion_{i}": "ValenceCorrectProportion"}, inplace=True)
         plot_res_list.append(small_df)
     df_for_plot = pd.concat(plot_res_list)
     df_for_plot.fillna(0, inplace=True)
+    df_for_plot.to_csv(os.path.join(save_path, "PAS_pcnt_correct_in_valence_long.csv"), index=False)
     plotter.plot_raincloud(df_for_plot, "subjectiveAwareness", "ValenceCorrectProportion", "Overall Performance in Valence Task Per Visibility",
                            "Subjective Awareness Rating", "% Correct in Valence Task",
                            save_path=save_path, save_name="PAS_pcnt_correct_in_valence",
                            x_col_color_order=[["#559CAD", "#559CAD", "#559CAD", "#559CAD"]],
                            y_tick_interval=25, y_tick_min=0, y_tick_max=100,
-                           x_axis_names=["1", "2-4"], y_tick_names=None, group_col_name=None,
+                           x_axis_names=["Unseen (PAS 1)", "Seen (PAS 2-4)"], y_tick_names=None, group_col_name=None,
                            group_name_mapping=None, x_values=[1, 2], add_horizontal_line=50)
-    return result_df
+    return df_for_plot
 
 
 def val_obj_perf(all_subs_df, save_path):
@@ -250,8 +264,55 @@ def behavioral_analysis(all_subs_df, save_path):
     # ANALYSIS 3: WERE SUBJECTS AT CHANCE IN THE OBJECTIVE TASK WHEN VISIBILITY WAS 1?
     pas_obj_perf(all_subs_df, beh_output_path)
 
+    conds = {parse_data_files.UAT: all_subs_df[all_subs_df[parse_data_files.TRIAL_NUMBER] < 40],
+             parse_data_files.AT: all_subs_df[all_subs_df[parse_data_files.TRIAL_NUMBER] >= 40]}
+    obj_across = dict()
+    for condition in conds:  # separate ET analysis between attended from unattended trials
+        cond_output_path = os.path.join(beh_output_path, condition)
+        if not (os.path.isdir(cond_output_path)):
+            os.mkdir(cond_output_path)
+        subs_df_cond = conds[condition]
+        df_obj = pas_obj_perf(subs_df_cond, cond_output_path)
+        df_obj.loc[:, "condition"] = condition
+        obj_across[condition] = df_obj
+
+    obj_across_df = pd.concat([obj_across[k] for k in obj_across.keys()])
+    obj_across_df_new = obj_across_df[(obj_across_df["subjectiveAwareness"] == 1) | (obj_across_df["subjectiveAwareness"] == 234)]
+    obj_across_df_new.loc[:, "subjectiveAwareness"] = obj_across_df_new["subjectiveAwareness"].map({1: 1, 234: 2})
+    plotter.plot_raincloud(obj_across_df_new, "subjectiveAwareness", "pcntCorrectInObj",
+                         "Overall Performance in Objective Task Per Visibility",
+                         "Subjective Awareness Rating", "% Correct in Objective Task",
+                         save_path=beh_output_path, save_name="PAS_pcnt_correct_in_objective_CONDITIONS",
+                         group_col_name="condition", group_name_mapping={parse_data_files.UAT: "Unattended", parse_data_files.AT: "Attended"},
+                         x_col_color_order=[["teal", "teal", "teal", "teal"], ["goldenrod", "goldenrod", "goldenrod", "goldenrod"]],
+                         y_tick_interval=25, y_tick_min=0, y_tick_max=100,
+                         x_axis_names=["Unseen (PAS 1)", "Seen (PAS 2-4)"], y_tick_names=None, x_values=[1, 2], add_horizontal_line=25)
+
+
     # ANALYSIS 4: WERE SUBJECTS AT CHANCE IN THE VALENCE TASK WHEN VISIBILITY WAS 1
     pas_val_perf(all_subs_df, beh_output_path)
+
+    val_across = dict()
+    for condition in conds:  # separate ET analysis between attended from unattended trials
+        cond_output_path = os.path.join(beh_output_path, condition)
+        if not (os.path.isdir(cond_output_path)):
+            os.mkdir(cond_output_path)
+        subs_df_cond = conds[condition]
+        df_val = pas_val_perf(subs_df_cond, cond_output_path)
+        df_val.loc[:, "condition"] = condition
+        val_across[condition] = df_val
+
+    val_across_df = pd.concat([val_across[k] for k in val_across.keys()])
+    val_across_df_new = val_across_df[(val_across_df["subjectiveAwareness"] == 1) | (val_across_df["subjectiveAwareness"] == 234)]
+    val_across_df_new.loc[:, "subjectiveAwareness"] = val_across_df_new["subjectiveAwareness"].map({1: 1, 234: 2})
+    plotter.plot_raincloud(val_across_df_new, "subjectiveAwareness", "ValenceCorrectProportion", "Overall Performance in Valence Task Per Visibility",
+                           "Subjective Awareness Rating", "% Correct in Valence Task",
+                           save_path=beh_output_path, save_name="PAS_pcnt_correct_in_valence_CONDITIONS",
+                           group_col_name="condition", group_name_mapping={parse_data_files.UAT: "Unattended", parse_data_files.AT: "Attended"},
+                           x_col_color_order=[["teal", "teal", "teal", "teal"], ["goldenrod", "goldenrod", "goldenrod", "goldenrod"]],
+                           y_tick_interval=25, y_tick_min=0, y_tick_max=100,
+                           x_axis_names=["Unseen (PAS 1)", "Seen (PAS 2-4)"], y_tick_names=None,  x_values=[1, 2], add_horizontal_line=50)
+
 
     # ANALYSIS 5: WERE SUBJECTS BETTER IN OBJECTIVE TASK FOR AVERSIVE / NEUTRAL STIMULI?
     val_obj_perf(all_subs_df, beh_output_path)
@@ -266,19 +327,19 @@ def beh_pilot_plots(data_path, save_path):
                            "Stimulus Valence Rating",
                            "Stimulus Valence", "Average Valence Rating",
                            save_path=save_path, save_name="avg_valence_ratings",
-                           x_col_color_order=[["#22395B", "#88292F"]],
+                           x_col_color_order=[["#6DB1BF", "#F39A9D"]],
                            y_tick_interval=1, y_tick_min=1, y_tick_max=5,
                            x_axis_names=["Neutral", "Aversive"],
                            y_tick_names=["1: Unhappy", "2", "3", "4", "5: Happy"], group_col_name=None,
-                           group_name_mapping=None, x_values=[0, 1])
+                           group_name_mapping=None, x_values=[0, 1], valpha=0.8, alpha_step=0)
 
     plotter.plot_raincloud(data, "Valence_numeric", "Average Arousal Rating",
                            "Stimulus Arousal Rating",
                            "Stimulus Valence", "Average Arousal Rating",
                            save_path=save_path, save_name="avg_arousal_ratings",
-                           x_col_color_order=[["#22395B", "#88292F"]],
+                           x_col_color_order=[["#6DB1BF", "#F39A9D"]],
                            y_tick_interval=1, y_tick_min=1, y_tick_max=5,
                            x_axis_names=["Neutral", "Aversive"],
                            y_tick_names=["1: Calm", "2", "3", "4", "5: Excited"], group_col_name=None,
-                           group_name_mapping=None, x_values=[0, 1])
+                           group_name_mapping=None, x_values=[0, 1], valpha=0.8, alpha_step=0)
     return

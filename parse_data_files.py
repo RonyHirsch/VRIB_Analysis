@@ -150,9 +150,9 @@ def load_trial_stim_info(sub_path):
                            rand_trials_data.loc[1, rand_trials_data.columns[0]]: rand_trials_data.loc[1, rand_trials_data.columns[1]].split(";")}
         trial_data = pd.DataFrame.from_dict(trial_data_dict)
         trial_data.rename(columns={CHOSEN_PIC_ORDER: TRIAL_STIM_ID, CHOSEN_PIC_VAL: TRIAL_STIM_VAL}, inplace=True)
-        trial_data[TRIAL_NUMBER] = trial_data[TRIAL_NUMBER].astype(int)
-        trial_data[TRIAL_STIM_VAL] = trial_data[TRIAL_STIM_VAL].astype(int)
-        trial_data[TRIAL_STIM_ID] = trial_data[TRIAL_STIM_ID].astype(int)
+        trial_data.loc[:, TRIAL_NUMBER] = trial_data[TRIAL_NUMBER].astype(int)
+        trial_data.loc[:, TRIAL_STIM_VAL] = trial_data[TRIAL_STIM_VAL].astype(int)
+        trial_data.loc[:, TRIAL_STIM_ID] = trial_data[TRIAL_STIM_ID].astype(int)
     else:  # read the stimulus order from a file that contains a list of all stimuli in the experiment in order
         stim_order_name = [f for f in os.listdir(sub_path) if FILE_STIM_ORDER in f][0]
         trial_data = pd.read_csv(os.path.join(sub_path, stim_order_name), sep="\t", header=None)
@@ -264,15 +264,15 @@ def load_trial_bee_info(sub_path, trial_df):
     if BEE_CORRECT not in trial_df.columns:  # if we didn't already achieve this information
         bee_correct = pd.read_csv(os.path.join(sub_path, [f for f in target_bee_files if BEE_CORRECT in f][0]), sep="\t", header=None, names=[i for i in range(4)])
         bee_correct = bee_correct[bee_correct[2] == BEE_CORRECT].reset_index(drop=True)
-        trial_df[BEE_CORRECT] = bee_correct[3]
+        trial_df.loc[:, BEE_CORRECT] = bee_correct[3]
 
     bee_selected_loc = pd.read_csv(os.path.join(sub_path, [f for f in target_bee_files if SELECTED_LOC in f][0]), sep="\t", header=None, names=[i for i in range(4)])
     target_loc_data = bee_selected_loc[bee_selected_loc.apply(lambda row: row.astype(str).str.contains(SELECTED_LOC, case=False).any(), axis=1)]
     if target_loc_data.shape[0] >= NUM_TRIALS:
         bee_selected_loc = bee_selected_loc[bee_selected_loc[2] == SELECTED_LOC].reset_index(drop=True)
-        trial_df[BEE_SELECT_LOC] = bee_selected_loc[3]
+        trial_df.loc[:, BEE_SELECT_LOC] = bee_selected_loc[3]
     else:
-        trial_df[BEE_SELECT_LOC] = None  # can be extracted from bee location files per trial; currently has no use
+        trial_df.loc[:, BEE_SELECT_LOC] = None  # can be extracted from bee location files per trial; currently has no use
     return trial_df
 
 
@@ -504,14 +504,22 @@ def get_trial_times(sub_path):
         print("no bus motion data; cannot derive trial start and end times")
         return None
     else:  # extract the real times each trial started in
-        trial_start_data = bus_data.loc[bus_data[1] == TRIAL_START_TIME]
-        trial_start_data = trial_start_data[[2]]
-        trial_start_data.rename(columns={2: TRIAL_START_TIME}, inplace=True)
-        trial_start_data[TRIAL_NUMBER] = list(range(0, trial_start_data.shape[0]))
-        trial_start_data.reset_index(drop=True, inplace=True)
-        trial_start_data[TRIAL_START_TIME] = [dt.datetime.strptime(t, '%Y-%m-%d %H:%M:%S.%f') for t in trial_start_data[TRIAL_START_TIME].tolist()]
-        trial_start_data[DATE] = [d.date() for d in trial_start_data[TRIAL_START_TIME].tolist()]
-        trial_start_data[TRIAL_START] = [d.time() for d in trial_start_data[TRIAL_START_TIME].tolist()]
+        trial_start_data_time = bus_data.loc[bus_data[1] == TRIAL_START_TIME]
+        if not trial_start_data_time.empty:  # when we have the TRIAL_START_TIME marker in this file (build 22-04 onward)
+            trial_start_data = trial_start_data_time[[2]]
+            trial_start_data.rename(columns={2: TRIAL_START_TIME}, inplace=True)
+            trial_start_data.loc[:, TRIAL_NUMBER] = list(range(0, trial_start_data.shape[0]))
+            trial_start_data.reset_index(drop=True, inplace=True)
+            trial_start_data.loc[:, TRIAL_START_TIME] = [dt.datetime.strptime(t, '%Y-%m-%d %H:%M:%S.%f') for t in trial_start_data[TRIAL_START_TIME].tolist()]
+            trial_start_data.loc[:, DATE] = [d.date() for d in trial_start_data[TRIAL_START_TIME].tolist()]
+            trial_start_data.loc[:, TRIAL_START] = [d.time() for d in trial_start_data[TRIAL_START_TIME].tolist()]
+        else:
+            start_datetime_str = bus_data[bus_data[0] == START_TIME][1].tolist()[0]
+            start_datetime = dt.datetime.strptime(start_datetime_str, '%Y-%m-%d %H:%M:%S.%f')
+            start_date = start_datetime.date()
+            num_trials = bus_data[bus_data[0] == START_TIME].shape[0]-1
+            trial_start_data = pd.DataFrame({TRIAL_NUMBER: list(range(0, num_trials)), TRIAL_START_TIME: [np.nan] * num_trials, DATE: [start_date] * num_trials, TRIAL_START: [np.nan] * num_trials})
+
     return trial_start_data
 
 
@@ -584,7 +592,10 @@ def load_sub_trial_data(sub_path):
     # get the times of trial start (bus starts moving, after ET validation) and end (bus stops, subject needs to select target bee)
     trial_start_times = get_trial_times(sub_unity_path)  # get trial start times
     trial_data = pd.merge(trial_data, trial_start_times, on=TRIAL_NUMBER)
-    trial_data.loc[:, TRIAL_END] = [(t + dt.timedelta(seconds=TRIAL_DUR_SEC)).time() for t in trial_data[TRIAL_START_TIME].tolist()]
+    try:  # in case TRIAL_START_TIME is not nan
+        trial_data.loc[:, TRIAL_END] = [(t + dt.timedelta(seconds=TRIAL_DUR_SEC)).time() for t in trial_data[TRIAL_START_TIME].tolist()]
+    except TypeError:  # if TRIAL_START_TIME is empty (nan), then it's a float and not a datetime.timedelta
+        trial_data.loc[:, TRIAL_END] = np.nan
     # mark trials per their condition based on trial number
     trial_data.loc[trial_data[TRIAL_NUMBER] >= empatica_parser.REPLAY_TRIAL, CONDITION] = REPLAY
     trial_data.loc[trial_data[TRIAL_NUMBER] < empatica_parser.REPLAY_TRIAL, CONDITION] = GAME
@@ -601,10 +612,22 @@ def convert_str_cols_to_datetime(df):
     :param df:
     :return:
     """
-    df[TRIAL_START_TIME] = [dt.datetime.strptime(t, '%Y-%m-%d %H:%M:%S.%f') for t in df[TRIAL_START_TIME].tolist()]
-    df[DATE] = [d.date() for d in df[TRIAL_START_TIME].tolist()]
-    df[TRIAL_START] = [d.time() for d in df[TRIAL_START_TIME].tolist()]
-    df[TRIAL_END] = [(t + dt.timedelta(seconds=TRIAL_DUR_SEC)).time() for t in df[TRIAL_START_TIME].tolist()]
+    missing_cols = list()
+    try:
+        df.loc[:, TRIAL_START_TIME] = [dt.datetime.strptime(t, '%Y-%m-%d %H:%M:%S.%f') for t in df[TRIAL_START_TIME].tolist()]
+        df.loc[:, DATE] = [d.date() for d in df[TRIAL_START_TIME].tolist()]
+    except TypeError:
+        missing_cols.append(TRIAL_START_TIME)
+    try:
+        df.loc[:, TRIAL_START] = [d.time() for d in df[TRIAL_START_TIME].tolist()]
+    except AttributeError:
+        missing_cols.append(TRIAL_START)
+    try:
+        df.loc[:, TRIAL_END] = [(t + dt.timedelta(seconds=TRIAL_DUR_SEC)).time() for t in df[TRIAL_START_TIME].tolist()]
+    except TypeError:
+        missing_cols.append(TRIAL_END)
+    if len(missing_cols) > 0:
+        print(f"columns [{missing_cols}] are empty")
     return df
 
 

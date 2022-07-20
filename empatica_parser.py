@@ -455,6 +455,10 @@ def preprocess_empatica_data(empatica_data, sub_busstop_gaze_data, sub_trial_dat
 
 def load_sub_peripheral_data(sub_path, sub_trial_data, sub_busstop_gaze_data, sub_output_path, sub_code, general_output_path):
     sub_empatica_path = os.path.join(sub_path, EMPATICA_OUTPUT_FOLDER)  # path to raw empatica data
+    if not os.path.exists(sub_empatica_path):  # in case we did not collect empatica data
+        print(f"{sub_code} has no empatica data; empatica parsing is skipped")
+        return sub_trial_data, None
+
     empatica_data = load_empatica_data(sub_empatica_path)  # load dict of empatica data
     # mark trials in each empatica data table: add a trial column
     empatica_data = parse_empatica_trial_data(empatica_data, sub_trial_data, sub_output_path)

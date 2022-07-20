@@ -139,7 +139,7 @@ def calculate_continuous_dT_in_trial(sub_data_dict, temp_output_path, samp_outpu
     return result_dict
 
 
-def plot_cluster_analysis(dTs_for_processing, pas1_cluster_p_vals, pas24_cluster_p_vals, save_path):
+def plot_cluster_analysis(dTs_for_processing, pas1_cluster_p_vals, pas24_cluster_p_vals, save_path, cond_name):
     # for the significance bar, take only significant clusters
     sig_dict = dict()
     pas1_sig = pas1_cluster_p_vals[pas1_cluster_p_vals["significant"]]
@@ -155,7 +155,7 @@ def plot_cluster_analysis(dTs_for_processing, pas1_cluster_p_vals, pas24_cluster
         sig_dict["pas24lines"] = {"y": ymax, "x": pas24_sig_x}
 
 
-    colors = {f"PAS1 {NEUTRAL}": "#00798C", f"PAS1 {AVERSIVE}": "#ED6A5A", f"PAS2-4 {NEUTRAL}": "#22395B", f"PAS2-4 {AVERSIVE}": "#88292F"}
+    colors = {f"PAS1 {NEUTRAL}": "#22395B", f"PAS1 {AVERSIVE}": "#88292F", f"PAS2-4 {NEUTRAL}": "#6DB1BF", f"PAS2-4 {AVERSIVE}": "#F39A9D"}
     labels = {f"PAS1 {NEUTRAL}": f"PAS1 {NEUTRAL}", f"PAS1 {AVERSIVE}": f"PAS1 {AVERSIVE}", f"PAS2-4 {NEUTRAL}": f"PAS2-4 {NEUTRAL}", f"PAS2-4 {AVERSIVE}": f"PAS2-4 {AVERSIVE}"}
     avg_cols = {f"PAS1 {NEUTRAL}": "mean", f"PAS1 {AVERSIVE}": "mean", f"PAS2-4 {NEUTRAL}": "mean", f"PAS2-4 {AVERSIVE}": "mean"}
     se_cols = {f"PAS1 {NEUTRAL}": "se", f"PAS1 {AVERSIVE}": "se", f"PAS2-4 {NEUTRAL}": "se", f"PAS2-4 {AVERSIVE}": "se"}
@@ -171,12 +171,12 @@ def plot_cluster_analysis(dTs_for_processing, pas1_cluster_p_vals, pas24_cluster
         avg_cols2[key] = avg_cols[key]
         se_cols2[key] = se_cols[key]
 
-    plot_title = "Evolution of change in temperature (ΔT) between conditions"
+    plot_title = f"Evolution of Change in Temperature (ΔT) in {gaze_analysis.cond_map[cond_name]}"
     plotter.plot_avg_line_dict(title=plot_title, trial_df_dict=dTs_for_processing,
                                avg_col_list=avg_cols2, se_col_list=se_cols2,
-                               label_list=labels2, y_name=f"Average ΔT in sample", x_name="sample",
+                               label_list=labels2, y_name=f"Average ΔT in Sample (Degrees)", x_name="Sample Number",
                                color_list=colors2, significance_bars_dict=sig_dict,
-                               save_path=save_path, x_tick_intervals=5,
+                               save_path=save_path, x_tick_intervals=5, y_tick_interval=0.01, y_min=-0.05, y_max=0.05,
                                save_name=f"dT_averaged_per_sample")
 
     return
@@ -289,7 +289,7 @@ def analyze_temperature(sub_data_dict, save_path):
                 dTs_for_processing[cond].to_csv(os.path.join(samp_output_path, f"dT_averaged_per_sample_{cond}.csv"))  # update the saved data
                 dTs_for_plotting[cond] = dTs_for_processing[cond]
 
-        plot_cluster_analysis(dTs_for_plotting, pas1_cluster_p_vals, pas24_cluster_p_vals, cond_output_path)
+        plot_cluster_analysis(dTs_for_plotting, pas1_cluster_p_vals, pas24_cluster_p_vals, cond_output_path, condition)
 
     # Prepare UAT and AT data for comparison
     comp_output_path = os.path.join(temp_output_path, "comparison")
@@ -314,29 +314,29 @@ def analyze_temperature(sub_data_dict, save_path):
 def plot_peripheral(df, columns, name, path, plot_title, plot_x_name, plot_y_name, x_col_color_order):
 
     long_df = pd.melt(df, id_vars=columns[0], value_vars=columns[1:])  # id column, "variable" column, and "value" column
+    long_df[['PAS_for_x_axis', 'Valence']] = long_df['variable'].str.split(' ', expand=True)
     # the conditions will be plotted as separate columns by their alphabetical order, and so their labels need to change
-    variable_labels = sorted(long_df["variable"].unique())
-    variable_conversion_dict = {variable_labels[i]: i for i in range(len(variable_labels))}  # the values
-    long_df["variable"].replace(variable_conversion_dict, inplace=True)
-    group_name_mapping = {v: k for k, v in variable_conversion_dict.items()}  # conversion back
+    #variable_labels = sorted(long_df["variable"].unique())
+    pas_dict = {"PAS1": 1, "PAS2-4": 2}  # the values
+    long_df["PAS_for_x_axis"].replace(pas_dict, inplace=True)
+    #group_name_mapping = {v: k for k, v in variable_conversion_dict.items()}  # conversion back
 
-    y_min_val = np.nanmin(long_df["value"])
-    y_max_val = np.nanmax(long_df["value"])
-    y_tick_skip = 0.5
+    y_tick_skip = 1
 
-    plotter.plot_raincloud(df=long_df, x_col_name="variable",
+    plotter.plot_raincloud(df=long_df, x_col_name="PAS_for_x_axis",
                            y_col_name="value",
                            plot_title=plot_title,
                            plot_x_name=plot_x_name,
                            plot_y_name=plot_y_name,
                            save_path=path, save_name=name,
-                           y_tick_interval=y_tick_skip, y_tick_min=y_min_val, y_tick_max=y_max_val,
-                           x_axis_names=[group_name_mapping[i] for i in sorted(long_df["variable"].unique())],
+                           y_tick_interval=y_tick_skip, y_tick_min=0, y_tick_max=7,
+                           x_axis_names=["Unseen (PAS 1)", "Seen (PAS 2-4)"],
                            y_tick_names=None,
-                           group_col_name="variable", group_name="Condition",
-                           group_name_mapping=group_name_mapping,
+                           group_col_name="Valence", group_name="Stimulus",
+                           group_name_mapping=None,
                            x_col_color_order=x_col_color_order,
-                           x_values=sorted(long_df["variable"].unique()), alpha_step=0, valpha=0.9)
+                           x_values=[1, 2], alpha_step=0, valpha=0.8)
+
     return
 
 
@@ -405,13 +405,11 @@ def analyze_eda(sub_data_dict, save_path):
         peak_amp_df.to_csv(os.path.join(cond_output_path, "peak_amp_averaged_per_sub.csv"))
 
         plot_peripheral(df=peak_num_df, columns=columns, name="peak_num_averaged_per_sub", path=cond_output_path,
-                        plot_title="Average Number of EDA Peaks in Condition", plot_x_name="Condition",
+                        plot_title=f"EDA Peaks in {gaze_analysis.cond_map[condition]}", plot_x_name="Subjective Awareness Rating",
                         plot_y_name="Average Number of SCR Peaks in Trial",
-                        x_col_color_order=[["#88292F", "#22395B", "#ED6A5A", "#00798C"],
-                                           ["#88292F", "#22395B", "#ED6A5A", "#00798C"],
-                                           ["#88292F", "#22395B", "#ED6A5A", "#00798C"],
-                                           ["#88292F", "#22395B", "#ED6A5A", "#00798C"]])
-
+                        x_col_color_order=[["#6DB1BF", "#6DB1BF"],
+                                           ["#F39A9D", "#F39A9D"]])
+        # ["#88292F", "#22395B", "#F39A9D", "#6DB1BF"]
         result_df_long = pd.concat(peak_list_long)
         result_df_long.to_csv(os.path.join(cond_output_path, "peak_averaged_per_sub_long.csv"), index=False)
 
@@ -466,7 +464,7 @@ def peripheral_analysis(sub_data_dict, save_path):
 
     sub_data_dict = filter_out_noisy_trials(sub_data_dict)
 
-    analyze_temperature(sub_data_dict, save_path)
+    #analyze_temperature(sub_data_dict, save_path)
 
     analyze_eda(sub_data_dict, save_path)
 

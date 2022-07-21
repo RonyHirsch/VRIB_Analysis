@@ -221,7 +221,7 @@ def plot_raincloud(df, x_col_name, y_col_name, plot_title, plot_x_name, plot_y_n
     figure = plt.gcf()  # get current figure
     if len(df[x_col_name].unique().tolist()) > 10:  # a wide plot
         figure.set_size_inches(20, 10)
-    figure.savefig(os.path.join(save_path, f"{RAIN}_{save_name}.png"), dpi=DPI, bbox_inches='tight')
+    figure.savefig(os.path.join(save_path, f"{save_name}.png"), dpi=DPI, bbox_inches='tight')
 
     del figure
     plt.clf()

@@ -15,8 +15,8 @@ MAX = "Max"
 CNT = "Count"
 SUB = "Subject"
 
-ATTN = "ATTENDED"
-UNATTEN = "UNATTENDED"
+ATTN = "Attended"
+UNATTEN = "Unattended"
 PAS = "PAS"
 NO_REPLAY = "no_replay"
 NO_GAME = "no_game"
@@ -36,7 +36,7 @@ def PAS_calc_trial_prop_per_sub(df, subs, cond_name):
     grouped_by_sub_PAS = df.groupby([SUB, parse_data_files.SUBJ_ANS]).agg({parse_data_files.TRIAL_NUMBER: 'count'})
     # df_PAS_pcntgs_per_sub : index=[sub/PAS], column=proportion (%) of trials for this subject which had this PAS rating
     df_PAS_pcntgs_per_sub = grouped_by_sub_PAS.groupby(level=0).apply(lambda x: 100 * x / float(x.sum()))
-    df_PAS_pcntgs_per_sub.rename(columns={parse_data_files.TRIAL_NUMBER: f"{cond_name}_{MEAN}_{PAS}"}, inplace=True)
+    df_PAS_pcntgs_per_sub.rename(columns={parse_data_files.TRIAL_NUMBER: f"{cond_name}{MEAN}_{PAS}"}, inplace=True)
     df_PAS_pcntgs_per_sub.reset_index(inplace=True)
     result_df = pd.merge(filler_df, df_PAS_pcntgs_per_sub, on=[SUB, parse_data_files.SUBJ_ANS], how='left')
     result_df.fillna(0, inplace=True)
@@ -44,77 +44,116 @@ def PAS_calc_trial_prop_per_sub(df, subs, cond_name):
 
 
 def pas_comparison_cond(all_subs_df, save_path):
+    """
+    Extract data on PAS ratings: Create dataframes in which for each subject there is a breakdown of how many
+    trials they had in each PAS score (1/2/3/4) in the attended and the unattended condition, and also within
+    the unattended condition, between aversive and neutral stimuli.
+    Output these tables, in addition to a plots of the frequency of each PAS rating in the different conditions.
+    :param all_subs_df: dataframe containing all the trial data for all subjects
+    :param save_path: path to save the data to
+    :return: nothing. Saves everything to csvs and plots
+    """
     unattended = all_subs_df[all_subs_df[parse_data_files.TRIAL_NUMBER] < exclusion_criteria.REPLAY_TRIAL]
     attended = all_subs_df[all_subs_df[parse_data_files.TRIAL_NUMBER] >= exclusion_criteria.REPLAY_TRIAL]
     conditions = {UNATTEN: unattended, ATTN: attended}
     subs = all_subs_df[SUB].unique().tolist()
-    # count how many PAS 1/2/3/4 are per each subject:
-    df_PAS_stats_list = list()
+
+    # **STEP 1**: Compare PAS ratings between attended and unattended conditions
+    PAS_task_comp_list = list()
+    PAS_task_comp_summary_list = list()
     for cond_name in conditions:
         cond = conditions[cond_name]
-        # WITHIN A COND, ACROSS ALL TRIALS
-        result_df = PAS_calc_trial_prop_per_sub(cond, subs, cond_name=cond_name + "_ALL")
-        # PER VALENCE
-        aversive = cond[cond[parse_data_files.TRIAL_STIM_VAL] == 1]
-        neutral = cond[cond[parse_data_files.TRIAL_STIM_VAL] == 0]
-        valences = {AVERSIVE: aversive, NEUTRAL: neutral}
-        val_list = list()
-        for val in valences:
-            data = valences[val]
-            result_df_val = PAS_calc_trial_prop_per_sub(data, subs, cond_name=cond_name + f"_{val}")
-            val_list.append(result_df_val)
-        df_PAS_stats_list.append(result_df)
-        df_PAS_stats_list.extend(val_list)
-    df_PAS_stats_list_by_sub = [df.set_index(SUB) for df in df_PAS_stats_list]  # set subject as index to concatenate by
-    df_PAS_stats_unified = pd.concat(df_PAS_stats_list_by_sub, axis=1)
-    df_PAS_stats_unified = df_PAS_stats_unified.loc[:, ~df_PAS_stats_unified.columns.duplicated()]
-    df_PAS_stats_unified.reset_index(inplace=True)
-    df_PAS_stats_unified.to_csv(os.path.join(save_path, f"{PAS}_rate_per_sub.csv"))
-    wide = df_PAS_stats_unified.pivot(index="Subject", columns="subjectiveAwareness")
-    wide.to_csv(os.path.join(save_path, f"{PAS}_rate_per_sub_wide.csv"))
+        cond_df = PAS_calc_trial_prop_per_sub(cond, subs, cond_name="")
+        cond_df.loc[:, "condition"] = cond_name
+        PAS_task_comp_list.append(cond_df)
+        cond_PAS_list = list()
+        # split by PAS to calculate cross-sub statistics for that rating
+        for score in range(1, 5):
+            score_df = cond_df[cond_df["subjectiveAwareness"] == score]
+            score_summary = pd.DataFrame(score_df.describe())
+            score_summary.loc[:, "PAS"] = score
+            cond_PAS_list.append(score_summary)
+        cond_PAS_df = pd.concat(cond_PAS_list)
+        cond_PAS_df.loc[:, "condition"] = cond_name
+        PAS_task_comp_summary_list.append(cond_PAS_df)
 
-    # trial PAS ratings per condition: attended, unattended
-    for_plot_UA = df_PAS_stats_unified[["Subject", "subjectiveAwareness", "UNATTENDED_ALL_Average_PAS"]]
-    for_plot_UA["condition"] = "Unattended"
-    for_plot_UA.rename(columns={"UNATTENDED_ALL_Average_PAS": "Average_PAS"}, inplace=True)
-    for_plot_AT = df_PAS_stats_unified[["Subject", "subjectiveAwareness", "ATTENDED_ALL_Average_PAS"]]
-    for_plot_AT["condition"] = "Attended"
-    for_plot_AT.rename(columns={"ATTENDED_ALL_Average_PAS": "Average_PAS"}, inplace=True)
-    df_PAS_for_plot = pd.concat([for_plot_UA, for_plot_AT])
-    plotter.plot_raincloud(df_PAS_for_plot, "subjectiveAwareness", "Average_PAS", "Overall Trial PAS Ratings",
-                           "Subjective Awareness Rating", "Average % of Trials",
-                           save_path=save_path, save_name="PAS_rate_across_subs",
+    # Save data (per subject, per rating)
+    PAS_task_comp_df = pd.concat(PAS_task_comp_list)
+    PAS_task_comp_df.to_csv(os.path.join(save_path, "PAS_comp_task.csv"))
+    # Save data (across subjects, per rating)
+    PAS_task_comp_summary_df = pd.concat(PAS_task_comp_summary_list)
+    PAS_task_comp_summary_df.to_csv(os.path.join(save_path, "PAS_comp_task_proportion_stats.csv"))
+
+    # Plot the distribution data: for each PAS rating, plot the proportion of trials rated as such, for UAT and AT
+    plotter.plot_raincloud(df=PAS_task_comp_df, x_col_name="subjectiveAwareness", y_col_name="Average_PAS",
+                           plot_title="PAS Rating Distribution",
+                           plot_x_name="Subjective Awareness Rating", plot_y_name="Fraction of Trials (%)",
+                           save_path=save_path, save_name="PAS_comp_task",
                            x_col_color_order=[["teal", "teal", "teal", "teal"],
                                               ["goldenrod", "goldenrod", "goldenrod", "goldenrod"]],
                            y_tick_interval=25, y_tick_min=0, y_tick_max=100,
                            x_axis_names=["1", "2", "3", "4"], y_tick_names=None, group_col_name="condition",
                            group_name_mapping=None, x_values=[1, 2, 3, 4])
 
+    # **STEP 2**: Compare PAS ratings between aversive and neutral trials, output data as wide for JASP analysis
+    PAS_task_val_comp_list = list()
+    PAS_task_val_comp_summary_list = list()
+    filler_df = pd.DataFrame(list(subs)).rename(columns={0: SUB})
+    filler_df.set_index(SUB, inplace=True)
+    for cond_name in conditions:
+        cond = conditions[cond_name]
+        cond_df = PAS_calc_trial_prop_per_sub(cond, subs, cond_name="")
+        for score in range(1, 5):
+            score_df = cond_df[cond_df["subjectiveAwareness"] == score]
+            score_df = score_df[[SUB, "Average_PAS"]]
+            score_df.rename(columns={"Average_PAS": f"{cond_name}_{score}"}, inplace=True)
+            score_df.set_index(SUB, inplace=True)
+            filler_df = pd.concat([filler_df, score_df], axis=1)
+        for valence in [0, 1]:
+            valence_name = "Aversive" if valence == 1 else "Neutral"
+            val = conditions[cond_name][conditions[cond_name][parse_data_files.TRIAL_STIM_VAL] == valence]
+            val_df = PAS_calc_trial_prop_per_sub(val, subs, cond_name="")
+            val_df_forlist = val_df.copy()
+            val_df_forlist.loc[:, "condition"] = cond_name
+            val_df_forlist.loc[:, "valence"] = valence_name
+            PAS_task_val_comp_list.append(val_df_forlist)
+            cond_val_PAS_list = list()
+            for score in range(1, 5):
+                score_val_df = val_df[val_df["subjectiveAwareness"] == score]
+                score_summary = pd.DataFrame(score_val_df.describe())
+                score_summary.loc[:, "PAS"] = score
+                cond_val_PAS_list.append(score_summary)
+                score_val_df = score_val_df[[SUB, "Average_PAS"]]
+                score_val_df.rename(columns={"Average_PAS": f"{cond_name}_{score}_{valence_name}"}, inplace=True)
+                score_val_df.set_index(SUB, inplace=True)
+                filler_df = pd.concat([filler_df, score_val_df], axis=1)
+            cond_val_PAS_df = pd.concat(cond_val_PAS_list)
+            cond_val_PAS_df.loc[:, "condition"] = cond_name
+            cond_val_PAS_df.loc[:, "valence"] = valence_name
+            PAS_task_val_comp_summary_list.append(cond_val_PAS_df)
 
-    # in UNATTENDED, trial PAS ratings between aversive and neutral
-    for_plot_UA_Aversive = df_PAS_stats_unified[["Subject", "subjectiveAwareness", "UNATTENDED_Aversive_Average_PAS"]]
-    for_plot_UA_Aversive["Stimulus"] = "Aversive"
-    for_plot_UA_Aversive.rename(columns={"UNATTENDED_Aversive_Average_PAS": "Average_PAS"}, inplace=True)
-    for_plot_UA_Neutral = df_PAS_stats_unified[["Subject", "subjectiveAwareness", "UNATTENDED_Neutral_Average_PAS"]]
-    for_plot_UA_Neutral["Stimulus"] = "Neutral"
-    for_plot_UA_Neutral.rename(columns={"UNATTENDED_Neutral_Average_PAS": "Average_PAS"}, inplace=True)
-    df_UA_PAS_for_plot = pd.concat([for_plot_UA_Aversive, for_plot_UA_Neutral])
-    plotter.plot_raincloud(df_UA_PAS_for_plot, "subjectiveAwareness", "Average_PAS", "Unattended Condition PAS Ratings",
-                           "Subjective Awareness Rating", "Average % of Trials",
-                           save_path=save_path, save_name="PAS_rate_across_subs_UAT",
+    # Save data (per subject, per rating)
+    PAS_task_val_comp_df = pd.concat(PAS_task_val_comp_list)
+    PAS_task_val_comp_df.to_csv(os.path.join(save_path, "PAS_comp_task_valence.csv"))
+    # Save data (across subjects, per rating)
+    PAS_task_val_comp_summary_df = pd.concat(PAS_task_val_comp_summary_list)
+    PAS_task_val_comp_summary_df.to_csv(os.path.join(save_path, "PAS_comp_task_valence_proportion_stats.csv"))
+
+    # Plot the distribution data in the UAT: for each PAS rating, plot the proportion of trials rated as such, for Aversive and Neutral
+    uat_only = PAS_task_val_comp_df[PAS_task_val_comp_df["condition"] == UNATTEN]
+    plotter.plot_raincloud(df=uat_only,
+                           x_col_name="subjectiveAwareness", y_col_name="Average_PAS",
+                           plot_title="PAS Rating Distribution in Unattended",
+                           plot_x_name="Subjective Awareness Rating", plot_y_name="Fraction of Trials (%)",
+                           save_path=save_path, save_name="PAS_comp_task_valence_UAT",
                            x_col_color_order=[
                                ["#F39A9D", "#F39A9D", "#F39A9D", "#F39A9D"],
                                ["#6DB1BF", "#6DB1BF", "#6DB1BF", "#6DB1BF"]],
                            y_tick_interval=25, y_tick_min=0, y_tick_max=100,
-                           x_axis_names=["1", "2", "3", "4"], y_tick_names=None, group_col_name="Stimulus",
+                           x_axis_names=["1", "2", "3", "4"], y_tick_names=None, group_col_name="valence",
                            group_name_mapping=None, x_values=[1, 2, 3, 4], alpha_step=0.1, valpha=0.8, is_right=True)
 
-
-    df_PAS_stats_unified_across_subs_avg = df_PAS_stats_unified.groupby(["subjectiveAwareness"]).mean()
-    df_PAS_stats_unified_across_subs_std = df_PAS_stats_unified.groupby(["subjectiveAwareness"]).std()
-    df_PAS_stats_unified_across_subs_avg.to_csv(os.path.join(save_path, f"{PAS}_rate_across_subs_mean.csv"))
-    df_PAS_stats_unified_across_subs_std.to_csv(os.path.join(save_path, f"{PAS}_rate_across_subs_std.csv"))
-    return df_PAS_stats_unified
+    return
 
 
 def calculate_pcnt_correct(df, filler_df, col, rating):
@@ -256,9 +295,7 @@ def behavioral_analysis(all_subs_df, save_path):
     if not (os.path.isdir(beh_output_path)):
         os.mkdir(beh_output_path)
 
-    # ANALYSIS 1 & 2:
-    # DID THE MANIPULATION WORK? PAS COMPARISON BETWEEN AT AND UAT
-    # DID THE VISIBILITY CHANGE BETWEEN AVERSIVE AND NEUTRAL STIMULI?
+    # STEP 1: VISIBILITY (PAS): subjects' PAS rating (1/2/3/4) frequency in the UAT v AT conditions, and between aversive and neutral stimuli
     pas_comparison_cond(all_subs_df, beh_output_path)
 
     # ANALYSIS 3: WERE SUBJECTS AT CHANCE IN THE OBJECTIVE TASK WHEN VISIBILITY WAS 1?

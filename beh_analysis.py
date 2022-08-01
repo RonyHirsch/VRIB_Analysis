@@ -49,6 +49,13 @@ def pas_comparison_cond(all_subs_df, save_path):
     trials they had in each PAS score (1/2/3/4) in the attended and the unattended condition, and also within
     the unattended condition, between aversive and neutral stimuli.
     Output these tables, in addition to a plots of the frequency of each PAS rating in the different conditions.
+
+    *** Quality Check *** :
+    In the code there is an intentional redundancy: the ".._summary_df" are separate to the ".." original df, to make sure
+    that they actually summarize the intended stats.
+    In addition, "total_df" contains all the data from "PAS_task_comp_df" AND "PAS_task_val_comp_df"
+    so that the numbers there SHOULD align.
+
     :param all_subs_df: dataframe containing all the trial data for all subjects
     :param save_path: path to save the data to
     :return: nothing. Saves everything to csvs and plots
@@ -79,7 +86,7 @@ def pas_comparison_cond(all_subs_df, save_path):
 
     # Save data (per subject, per rating)
     PAS_task_comp_df = pd.concat(PAS_task_comp_list)
-    PAS_task_comp_df.to_csv(os.path.join(save_path, "PAS_comp_task.csv"))
+    PAS_task_comp_df.to_csv(os.path.join(save_path, "PAS_comp_task.csv"), index=False)
     # Save data (across subjects, per rating)
     PAS_task_comp_summary_df = pd.concat(PAS_task_comp_summary_list)
     PAS_task_comp_summary_df.to_csv(os.path.join(save_path, "PAS_comp_task_proportion_stats.csv"))
@@ -98,8 +105,8 @@ def pas_comparison_cond(all_subs_df, save_path):
     # **STEP 2**: Compare PAS ratings between aversive and neutral trials, output data as wide for JASP analysis
     PAS_task_val_comp_list = list()
     PAS_task_val_comp_summary_list = list()
-    filler_df = pd.DataFrame(list(subs)).rename(columns={0: SUB})
-    filler_df.set_index(SUB, inplace=True)
+    total_df = pd.DataFrame(list(subs)).rename(columns={0: SUB})
+    total_df.set_index(SUB, inplace=True)
     for cond_name in conditions:
         cond = conditions[cond_name]
         cond_df = PAS_calc_trial_prop_per_sub(cond, subs, cond_name="")
@@ -108,7 +115,7 @@ def pas_comparison_cond(all_subs_df, save_path):
             score_df = score_df[[SUB, "Average_PAS"]]
             score_df.rename(columns={"Average_PAS": f"{cond_name}_{score}"}, inplace=True)
             score_df.set_index(SUB, inplace=True)
-            filler_df = pd.concat([filler_df, score_df], axis=1)
+            total_df = pd.concat([total_df, score_df], axis=1)
         for valence in [0, 1]:
             valence_name = "Aversive" if valence == 1 else "Neutral"
             val = conditions[cond_name][conditions[cond_name][parse_data_files.TRIAL_STIM_VAL] == valence]
@@ -126,7 +133,7 @@ def pas_comparison_cond(all_subs_df, save_path):
                 score_val_df = score_val_df[[SUB, "Average_PAS"]]
                 score_val_df.rename(columns={"Average_PAS": f"{cond_name}_{score}_{valence_name}"}, inplace=True)
                 score_val_df.set_index(SUB, inplace=True)
-                filler_df = pd.concat([filler_df, score_val_df], axis=1)
+                total_df = pd.concat([total_df, score_val_df], axis=1)
             cond_val_PAS_df = pd.concat(cond_val_PAS_list)
             cond_val_PAS_df.loc[:, "condition"] = cond_name
             cond_val_PAS_df.loc[:, "valence"] = valence_name
@@ -153,7 +160,10 @@ def pas_comparison_cond(all_subs_df, save_path):
                            x_axis_names=["1", "2", "3", "4"], y_tick_names=None, group_col_name="valence",
                            group_name_mapping=None, x_values=[1, 2, 3, 4], alpha_step=0.1, valpha=0.8, is_right=True)
 
-    return
+    # Save the dataframe that includes one column per each PAS x Valence, per subject. This is the JASP structure
+    total_df.to_csv(os.path.join(save_path, "PAS_comp_all_JASP_struct.csv"))
+
+    return total_df, PAS_task_comp_df, PAS_task_val_comp_df
 
 
 def calculate_pcnt_correct(df, filler_df, col, rating):

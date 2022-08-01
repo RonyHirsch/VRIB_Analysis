@@ -16,11 +16,16 @@ BEE_ANS = "beeScore"
 BEE_SELECT_LOC = "beeSelectedLocation"
 TRIAL_MONEY = "trialScore"
 OBJ_ANS = "objectiveIsCorrect"
-OBJ_ANS_TIME = "objectiveAnsTime"
-OBJ_TIME = "objectiveQTime"
+OBJ_TIME = "objectiveQStartTime"
+OBJ_TIME_SELECTED = "objectiveQSelectedTime"
 OBJ_TARGET_LOC = "objectiveTargetLoc"
-OBJ_RT = "objectiveRTms"
+OBJ_RT = "objectiveRTSec"
+OBJ_BUSSTOP = "objectiveTimeFromLastIntactSec"
 SUBJ_ANS = "subjectiveAwareness"
+SUBJ_TIME = "subjectiveQStartTime"
+SUBJ_TIME_SELECTED = "subjectiveQSelectedTime"
+SUBJ_RT = "subjectiveRTSec"
+SUBJ_BUSSTOP = "subjectiveTimeFromLastIntactSec"
 SUBJ_ANS_IS1 = "isPAS1"
 SUBJ_ANS_IS12 = "isPAS12"
 VAL_ANS = "valenceJudgement"
@@ -44,6 +49,8 @@ BUSSTOP_GAZE_DUR_MAX_SCRAMBLED = "busstopGazeDurScrambledMax"
 BUSSTOP = "busStop"
 # file and file content data
 FILE_RANDOMIZE_TRIALS = "Block.randomizeTrials_"
+FILE_MOTION_PIVOT = "MotionPivot"
+MOTION_BILLBOARD = "ClosestBillboardPassingNow"
 FILE_STIM_ORDER = "stimOrder"
 CHOSEN_PIC_ORDER = "chosenPicsOrder"
 CHOSEN_PIC_VAL = "chosenPicsValence"
@@ -68,18 +75,26 @@ BEE_VALUE = 2
 # randomizeStim (randomization of scrambled/intact locations)
 FILE_RANDOMIZE_STIM = "ExpStimRandomizer.randomizeStim_"
 SCRAMBLED_LOCS = "ScrambledLocationsInTrial"
+LAST_INTACT_LOC = "LastIntactLocationInTrial"
+LAST_INTACT_TIME = "LastIntactTimeInTrial"
 # objective question
 OBJ_Q = "ObjTrialAwareness."
 OBJ_Q_RANDOMIZE_OPTIONS = "ObjTrialAwareness.randomizeOptions_"
 OBJ_CORRECT_LOC = ".correctAnsLoc"
 OBJ_SELECTED_LOC = ".selectedTargetInd"
 OBJ_IS_CORRECT = ".isCorrectAnswer"
+OBJ_TIMINGS = ".objectiveQProjection_"
+OBJ_Q_START = "RealObjStart"
+OBJ_Q_SELECTED = "RealObjSelected"
 IN = "IN"
 OUT = "OUT"
 TARGET = "TARGET"
 # subjective question
 SUBJ_Q = "SubjTrialAwareness.subjectiveQProjection.selectedTargetInd"
 SUBJ_SELECTED_LOC = "selectedTargetInd"
+SUBJ_TIMINGS = ".subjectiveQProjection_"
+SUBJ_Q_START = "RealSubjStart"
+SUBJ_Q_SELECTED = "RealSubjSelected"
 # velance question
 VALENCE_Q = "ValTrialAwareness.valenceQProjection.selectedTargetInd"
 # ET data: images' recordAtGaze
@@ -88,6 +103,7 @@ IMAGE_RECORD_BACKUP = "RecordAtGazeBackup" # backup file
 IMAGE = "Image"
 BUSSTOP_FIRST = 2
 BUSSTOP_LAST = 11
+NUM_BUSSTOPS_IN_TRIAL = 10
 GAZE_DURATION = "GazeDuration"  # STOPPED RELYING ON THIS COLUMN: CALCULATING ENDTIME - STARTTIME
 GAZE_START = "startGazeTime"
 GAZE_END = "endGazeTime"
@@ -98,9 +114,10 @@ NUM_TRIALS = 50
 FILE_BUS_MOTION = "BusBeesAndPlayer.BusMotion"
 DATE = "date"
 TRIAL_START_TIME = "RealTrialStart"  # datetime.timestamp!
+TRIAL_END_TIME = "RealBusStopTime"  # datetime.timestamp!
 TRIAL_START = "TrialStart"  # datetime.time
 TRIAL_END = "TrialEnd"  # datetime.time
-TRIAL_DUR_SEC = 63  # each trial bus-ride was 1 minute and 3 seconds
+TRIAL_DUR_SEC = "TrialDurSec"
 CONDITION = "condition"
 REPLAY = "Attended"
 GAME = "Unattended"
@@ -138,6 +155,42 @@ def load_scrambeloo(sub_path):
     return trial_scrambled_df
 
 
+def last_intact_in_trial(row):
+    if isinstance(row[TRIAL_SCRAMBLED_LOCS], str):
+        scrambled = sorted(row[TRIAL_SCRAMBLED_LOCS].split(";"))
+        intact = [int(x) for x in range(NUM_BUSSTOPS_IN_TRIAL) if not str(x) in scrambled]
+        last_intact = max(intact)
+        return last_intact
+    return np.nan
+
+
+def mark_motion_pivot_trials(motion_pivot):
+    motion_pivot.reset_index(drop=True, inplace=True)
+    trial_number = 0
+    last_billboard = 0
+    motion_pivot.loc[:, TRIAL_NUMBER] = 0
+    for ind, row in motion_pivot.iterrows():
+        if int(row[2]) > last_billboard:  # increasing billboard serial number, within the same trial
+            last_billboard = int(row[2])
+        else:
+            last_billboard = int(row[2])
+            trial_number += 1
+        motion_pivot.at[ind, TRIAL_NUMBER] = trial_number
+    return motion_pivot
+
+
+def mark_last_busstop_time(trial_data, motion_pivot):
+    trial_data.loc[:, LAST_INTACT_TIME] = np.nan
+    for ind, row in trial_data.iterrows():
+        trial = row[TRIAL_NUMBER]
+        if np.isnan(row[LAST_INTACT_LOC]):
+            trial_data.loc[ind, LAST_INTACT_TIME] = np.nan
+        else:
+            loc = str(int(row[LAST_INTACT_LOC]))
+            trial_data.loc[ind, LAST_INTACT_TIME] = dt.datetime.strptime(motion_pivot[(motion_pivot[TRIAL_NUMBER] == trial) & (motion_pivot[2] == loc)][3].tolist()[0], '%Y-%m-%d %H:%M:%S.%f')
+    return trial_data
+
+
 def load_trial_stim_info(sub_path):
     # load stimulus index and valence
     rand_trials_name = [f for f in os.listdir(sub_path) if FILE_RANDOMIZE_TRIALS in f][0]
@@ -171,6 +224,20 @@ def load_trial_stim_info(sub_path):
     else:  # we need to read the "scrambeloo" files, as the FILE_RANDOMIZE_STIM documentation didn't work
         trial_scrambled_info = load_scrambeloo(sub_path)
         trial_data = pd.merge(trial_data, trial_scrambled_info, on=TRIAL_STIM_ID)
+
+    # get the last intact billboard
+    trial_data.loc[:, LAST_INTACT_LOC] = trial_data.apply(lambda row: last_intact_in_trial(row), axis=1)
+
+    # load intact stimuli and their times: mark the TIME of the LAST INTACT STIMULUS appearing in the trial
+    motion_pivot_file = [f for f in os.listdir(sub_path) if FILE_MOTION_PIVOT in f][0]
+    motion_pivot = pd.read_csv(os.path.join(sub_path, motion_pivot_file), sep="\t", header=None, names=[i for i in range(13)])
+    motion_pivot = motion_pivot[motion_pivot[1] == MOTION_BILLBOARD].drop(columns=[i for i in range(4, 13)])  # only rows indicating passing a billboard
+    if not motion_pivot.empty:
+        motion_pivot = mark_motion_pivot_trials(motion_pivot)
+        trial_data = mark_last_busstop_time(trial_data, motion_pivot)
+    else:
+        trial_data.loc[:, LAST_INTACT_TIME] = np.nan
+
     return trial_data
 
 
@@ -282,8 +349,8 @@ def get_obj_correct(correct_loc, selected_loc, is_correct):
     selected_loc = selected_loc[selected_loc[1] == OUT].reset_index(drop=True)
     is_correct = is_correct[is_correct[1] == OUT].reset_index(drop=True)
     comparison_df = pd.DataFrame.from_dict({"ans": correct_loc[3], "chose": selected_loc[3], "isCorrect?": is_correct[3]})
-    comparison_df["isCorrectComparison"] = np.where((comparison_df['ans'] == comparison_df['chose']), True, False)
-    comparison_df["FalseForMistake"] = np.where((comparison_df['isCorrect?'] == comparison_df['isCorrectComparison']), True, False)
+    comparison_df.loc[:, "isCorrectComparison"] = np.where((comparison_df['ans'] == comparison_df['chose']), True, False)
+    comparison_df.loc[:, "FalseForMistake"] = np.where((comparison_df['isCorrect?'] == comparison_df['isCorrectComparison']), True, False)
     if not all(comparison_df["FalseForMistake"]):
         print("OBJ Q ERROR: INCONSISTENCY BETWEEN LOGS REGARDING SUBJECT'S OBJECTIVE Q ANSWER")
         return None
@@ -293,25 +360,31 @@ def get_obj_correct(correct_loc, selected_loc, is_correct):
             new_comparison_df = comparison_df.append([[] for _ in range(missing_trials)], ignore_index=True)
             comparison_df = new_comparison_df
         comp_result = comparison_df["isCorrectComparison"]
-        correct = [float(x) for x in is_correct[0].tolist()]
-        if len(correct) < NUM_TRIALS:
-            missing_trials = NUM_TRIALS - len(correct)
-            filler = [np.nan] * missing_trials
-            correct.extend(filler)
-        return comp_result, correct
+        return comp_result
 
 
-def get_obj_time_loc(obj_correct_location):
+def get_obj_time_loc(obj_correct_location, obj_q_timings):
+    if obj_q_timings is not None:
+        start_time_rows = obj_q_timings[obj_q_timings[1] == OBJ_Q_START]
+        obj_start_times = [dt.datetime.strptime(t, '%Y-%m-%d %H:%M:%S.%f') for t in start_time_rows[2].tolist()]
+        ans_time_rows = obj_q_timings[obj_q_timings[1] == OBJ_Q_SELECTED]
+        obj_selected_times = [dt.datetime.strptime(t, '%Y-%m-%d %H:%M:%S.%f') for t in ans_time_rows[2].tolist()]
+    else:
+        obj_start_times = np.nan
+        obj_selected_times  = np.nan
+
     # remain only with the TARGET location rows
     target_rows = obj_correct_location[obj_correct_location[5] == TARGET]
     if target_rows.shape[0] < NUM_TRIALS:
         print(f"Objective Q logs: missing trials = {NUM_TRIALS - target_rows.shape[0]}")
         missing_trials = NUM_TRIALS - target_rows.shape[0]
         target_rows = target_rows.append([[] for _ in range(missing_trials)], ignore_index=True)
-    obj_times = [float(x) for x in target_rows[0].tolist()]
+        obj_start_times.extend([np.nan for _ in range(missing_trials)])
+        obj_selected_times.extend([np.nan for _ in range(missing_trials)])
+
     obj_picname = [int(x) if not(pd.isna(x)) else x for x in target_rows[4].tolist()]
     obj_locs = target_rows[2].tolist()
-    return obj_times, obj_picname, obj_locs
+    return obj_start_times, obj_selected_times, obj_picname, obj_locs
 
 
 def load_trial_objQ_info(sub_path, trial_df):
@@ -320,13 +393,21 @@ def load_trial_objQ_info(sub_path, trial_df):
     selected_ans_loc = pd.read_csv(os.path.join(sub_path, [f for f in objQ_files if OBJ_SELECTED_LOC in f][0]), sep="\t", header=None, names=[i for i in range(4)])
     is_correct = pd.read_csv(os.path.join(sub_path, [f for f in objQ_files if OBJ_IS_CORRECT in f][0]), sep="\t", header=None, names=[i for i in range(4)])
     obj_correct_location = pd.read_csv(os.path.join(sub_path, [f for f in objQ_files if OBJ_Q_RANDOMIZE_OPTIONS in f][0]), sep="\t", header=None, names=[i for i in range(6)])
-    trial_df[OBJ_TIME], trial_df[TRIAL_STIM_NAME], trial_df[OBJ_TARGET_LOC] = get_obj_time_loc(obj_correct_location)
-    # make it so that stim-related columns are together
-    trial_df = trial_df[[TRIAL_NUMBER, TRIAL_STIM_ID, TRIAL_STIM_NAME, TRIAL_STIM_VAL, TRIAL_SCRAMBLED_LOCS,
-                         CLUES_TAKEN, BEE_ANS, TRIAL_MONEY, BEE_CORRECT, BEE_SELECT_LOC,
-                         OBJ_TIME, OBJ_TARGET_LOC]]
-    trial_df.loc[:, OBJ_ANS], trial_df.loc[:, OBJ_ANS_TIME] = get_obj_correct(correct_ans_loc, selected_ans_loc, is_correct)
-    trial_df.loc[:, OBJ_RT] = trial_df[OBJ_ANS_TIME] - trial_df[OBJ_TIME]
+    # timings file: version 22-07-30 onward
+    if len([f for f in objQ_files if OBJ_TIMINGS in f]) > 0:
+        obj_q_timings = pd.read_csv(os.path.join(sub_path, [f for f in objQ_files if OBJ_TIMINGS in f][0]), sep="\t", header=None, names=[i for i in range(3)])
+    else:
+        obj_q_timings = None
+    trial_df[OBJ_TIME], trial_df[OBJ_TIME_SELECTED], trial_df[TRIAL_STIM_NAME], trial_df[OBJ_TARGET_LOC] = get_obj_time_loc(obj_correct_location, obj_q_timings)
+    trial_df.loc[:, OBJ_RT] = trial_df[OBJ_TIME_SELECTED] - trial_df[OBJ_TIME]
+    trial_df.loc[:, OBJ_BUSSTOP] = trial_df[OBJ_TIME] - trial_df[LAST_INTACT_TIME]  # time between the appearance of the last intact instance of the stimulus, and the objective question
+    trial_df.loc[:, LAST_INTACT_TIME] = pd.to_datetime(trial_df[LAST_INTACT_TIME])  # convert "nan"s to "NaT"s
+    trial_df.loc[:, OBJ_ANS] = get_obj_correct(correct_ans_loc, selected_ans_loc, is_correct)
+
+    trial_df.loc[:, OBJ_RT] = [t.total_seconds() if not (pd.isna(t)) else t for t in trial_df[OBJ_RT].tolist()]  # get diff in SECONDS
+    trial_df.loc[:, OBJ_BUSSTOP] = [t.total_seconds() if not (pd.isna(t)) else t for t in trial_df[OBJ_BUSSTOP].tolist()]
+    for col in [OBJ_TIME, OBJ_TIME_SELECTED]:
+        trial_df.loc[:, col] = [t.time() if not (pd.isna(t)) else t for t in trial_df[col].tolist()]
     return trial_df
 
 
@@ -340,10 +421,39 @@ def load_trial_subjQ_info(sub_path, trial_df):
     # PAS
     subjQ_file = [f for f in os.listdir(sub_path) if SUBJ_Q in f][0]
     subjQ_data = pd.read_csv(os.path.join(sub_path, subjQ_file), sep="\t", header=None, names=[i for i in range(4)])
+    # timings
+    if len([f for f in os.listdir(sub_path) if SUBJ_TIMINGS in f]) > 0:
+        subjQ_time_files = [f for f in os.listdir(sub_path) if SUBJ_TIMINGS in f][0]
+        subjQ_time_data = pd.read_csv(os.path.join(sub_path, subjQ_time_files), sep="\t", header=None, names=[i for i in range(3)])
+        start_time_rows = subjQ_time_data[subjQ_time_data[1] == SUBJ_Q_START]
+        subj_start_times = [dt.datetime.strptime(t, '%Y-%m-%d %H:%M:%S.%f') for t in start_time_rows[2].tolist()]
+        ans_time_rows = subjQ_time_data[subjQ_time_data[1] == SUBJ_Q_SELECTED]
+        subj_selected_times = [dt.datetime.strptime(t, '%Y-%m-%d %H:%M:%S.%f') for t in ans_time_rows[2].tolist()]
+        if start_time_rows.shape[0] < NUM_TRIALS:
+            print(f"Subjective Q logs: missing trials = {NUM_TRIALS - start_time_rows.shape[0]}")
+            missing_trials = NUM_TRIALS - start_time_rows.shape[0]
+            subj_start_times.extend([np.nan for _ in range(missing_trials)])
+            subj_selected_times.extend([np.nan for _ in range(missing_trials)])
+    else:
+        subj_start_times = np.nan
+        subj_selected_times = np.nan
+
+    trial_df[SUBJ_TIME], trial_df[SUBJ_TIME_SELECTED] = subj_start_times, subj_selected_times
+    if pd.isnull(trial_df[SUBJ_TIME]).all():  # no time data
+        trial_df.loc[:, SUBJ_TIME] = pd.to_datetime(trial_df[SUBJ_TIME])
+        trial_df.loc[:, SUBJ_TIME_SELECTED] = pd.to_datetime(trial_df[SUBJ_TIME_SELECTED])
+    trial_df.loc[:, SUBJ_RT] = trial_df[SUBJ_TIME_SELECTED] - trial_df[SUBJ_TIME]
+    trial_df.loc[:, SUBJ_RT] = [t.total_seconds() if not (pd.isna(t)) else t for t in trial_df[SUBJ_RT].tolist()]  # get diff in SECONDS
+    trial_df.loc[:, SUBJ_BUSSTOP] = trial_df[SUBJ_TIME] - trial_df[LAST_INTACT_TIME]  # time between the appearance of the last intact instance of the stimulus, and the subjective question
+    trial_df.loc[:, SUBJ_BUSSTOP] = [t.total_seconds() if not (pd.isna(t)) else t for t in trial_df[SUBJ_BUSSTOP].tolist()]
+    for col in [SUBJ_TIME, SUBJ_TIME_SELECTED]:
+        trial_df.loc[:, col] = [t.time() if not (pd.isna(t)) else t for t in trial_df[col].tolist()]
+
     # just the responses
     subjQ_data = subjQ_data[subjQ_data[2] == SUBJ_SELECTED_LOC].reset_index(drop=True)
     subjQ_list = [int(x)+1 for x in subjQ_data[3].tolist()]  # the +1 is to convert the ratings coded in [0, 3] to PAS [1, 4]
     trial_df.loc[:, SUBJ_ANS] = pd.Series(subjQ_list)  # add as a column, fill with nans if missing trials
+
     # valence
     valQ_file = [f for f in os.listdir(sub_path) if VALENCE_Q in f][0]
     valQ_data = pd.read_csv(os.path.join(sub_path, valQ_file), sep="\t", header=None, names=[i for i in range(4)])
@@ -445,6 +555,9 @@ def load_trial_busstop_gaze_duration(sub_path, trial_df):
             trial_df[BUSSTOP_GAZE_NUM + str(i)] = gaze_periods_per_trial[2]
         i += 1
 
+    if trial_df.loc[:, [BUSSTOP_GAZE_DUR + str(i) for i in range(i)]].isnull().all().all():  # ET data recoded, but no eyes were in helmet
+        missing_flag = 1
+
     return trial_df, missing_flag
 
 
@@ -503,24 +616,35 @@ def get_trial_times(sub_path):
     if bus_data.shape[0] < 2:  # bus motion data file exists but empty
         print("no bus motion data; cannot derive trial start and end times")
         return None
-    else:  # extract the real times each trial started in
-        trial_start_data_time = bus_data.loc[bus_data[1] == TRIAL_START_TIME]
-        if not trial_start_data_time.empty:  # when we have the TRIAL_START_TIME marker in this file (build 22-04 onward)
-            trial_start_data = trial_start_data_time[[2]]
-            trial_start_data.rename(columns={2: TRIAL_START_TIME}, inplace=True)
-            trial_start_data.loc[:, TRIAL_NUMBER] = list(range(0, trial_start_data.shape[0]))
-            trial_start_data.reset_index(drop=True, inplace=True)
-            trial_start_data.loc[:, TRIAL_START_TIME] = [dt.datetime.strptime(t, '%Y-%m-%d %H:%M:%S.%f') for t in trial_start_data[TRIAL_START_TIME].tolist()]
-            trial_start_data.loc[:, DATE] = [d.date() for d in trial_start_data[TRIAL_START_TIME].tolist()]
-            trial_start_data.loc[:, TRIAL_START] = [d.time() for d in trial_start_data[TRIAL_START_TIME].tolist()]
-        else:
-            start_datetime_str = bus_data[bus_data[0] == START_TIME][1].tolist()[0]
-            start_datetime = dt.datetime.strptime(start_datetime_str, '%Y-%m-%d %H:%M:%S.%f')
-            start_date = start_datetime.date()
-            num_trials = bus_data[bus_data[0] == START_TIME].shape[0]-1
-            trial_start_data = pd.DataFrame({TRIAL_NUMBER: list(range(0, num_trials)), TRIAL_START_TIME: [np.nan] * num_trials, DATE: [start_date] * num_trials, TRIAL_START: [np.nan] * num_trials})
+    # extract the real times each trial started in
+    trial_start_data_time = bus_data.loc[bus_data[1] == TRIAL_START_TIME]
+    trial_end_data_time = bus_data.loc[bus_data[1] == TRIAL_END_TIME]
+    if not trial_start_data_time.empty:  # when we have the TRIAL_START_TIME marker in this file (build 22-04 onward)
+        # trial start
+        trial_start_data = trial_start_data_time[[2]]
+        trial_start_data.rename(columns={2: TRIAL_START_TIME}, inplace=True)
+        trial_start_data.loc[:, TRIAL_NUMBER] = list(range(0, trial_start_data.shape[0]))
+        trial_start_data.reset_index(drop=True, inplace=True)
+        trial_start_data.loc[:, TRIAL_START_TIME] = [dt.datetime.strptime(t, '%Y-%m-%d %H:%M:%S.%f') for t in trial_start_data[TRIAL_START_TIME].tolist()]
+        trial_start_data.loc[:, DATE] = [d.date() for d in trial_start_data[TRIAL_START_TIME].tolist()]
+        trial_start_data.loc[:, TRIAL_START] = [d.time() for d in trial_start_data[TRIAL_START_TIME].tolist()]
+        # trial end: from build 22-07-30 onward
+        trial_end_data = trial_end_data_time[[2]]
+        trial_end_data.rename(columns={2: TRIAL_END_TIME}, inplace=True)
+        trial_end_data.loc[:, TRIAL_NUMBER] = list(range(0, trial_end_data.shape[0]))
+        trial_end_data.reset_index(drop=True, inplace=True)
+        trial_end_data.loc[:, TRIAL_END_TIME] = [dt.datetime.strptime(t, '%Y-%m-%d %H:%M:%S.%f') for t in trial_end_data[TRIAL_END_TIME].tolist()]
+        trial_end_data.loc[:, TRIAL_END] = [d.time() for d in trial_end_data[TRIAL_END_TIME].tolist()]
 
-    return trial_start_data
+    else:
+        start_datetime_str = bus_data[bus_data[0] == START_TIME][1].tolist()[0]
+        start_datetime = dt.datetime.strptime(start_datetime_str, '%Y-%m-%d %H:%M:%S.%f')
+        start_date = start_datetime.date()
+        num_trials = bus_data[bus_data[0] == START_TIME].shape[0]-1
+        trial_start_data = pd.DataFrame({TRIAL_NUMBER: list(range(0, num_trials)), TRIAL_START_TIME: [np.nan] * num_trials, DATE: [start_date] * num_trials, TRIAL_START: [np.nan] * num_trials})
+        trial_end_data = None
+
+    return trial_start_data, trial_end_data
 
 
 def parse_busstop_gaze(trial_data, sub_path):
@@ -580,22 +704,26 @@ def load_sub_trial_data(sub_path):
         trial_data = trial_data.append([[] for _ in range(missing_trials)], ignore_index=True)
     trial_data = load_trial_objQ_info(sub_unity_path, trial_data)
     trial_data = load_trial_subjQ_info(sub_unity_path, trial_data)
+    # Eye tracking data
     trial_data, missing_et_data = load_trial_busstop_gaze_duration(sub_unity_path, trial_data)
     if missing_et_data == 0:
         trial_data = trial_busstop_gaze_summary(trial_data)
+        busstop_gaze_data = parse_busstop_gaze(trial_data, sub_unity_path)  # generate a row-per-gaze-event dataframe
     else:
-        print(f"Bus stop gaze duration data lost / corrupt - no data")
-
-    busstop_gaze_data = parse_busstop_gaze(trial_data, sub_unity_path)  # generate a row-per-gaze-event dataframe
+        print(f"Bus stop GAZE duration data lost / corrupt / missing - no data")
+        busstop_gaze_data = None
     # in the replay levels, THE BEE DOES NOT MATTER, so all bee-related info should be NaN as subjects did not follow anything here
     trial_data = clean_replay(trial_data)
     # get the times of trial start (bus starts moving, after ET validation) and end (bus stops, subject needs to select target bee)
-    trial_start_times = get_trial_times(sub_unity_path)  # get trial start times
+    trial_start_times, trial_end_times = get_trial_times(sub_unity_path)  # get trial start times
     trial_data = pd.merge(trial_data, trial_start_times, on=TRIAL_NUMBER)
-    try:  # in case TRIAL_START_TIME is not nan
-        trial_data.loc[:, TRIAL_END] = [(t + dt.timedelta(seconds=TRIAL_DUR_SEC)).time() for t in trial_data[TRIAL_START_TIME].tolist()]
-    except TypeError:  # if TRIAL_START_TIME is empty (nan), then it's a float and not a datetime.timedelta
-        trial_data.loc[:, TRIAL_END] = np.nan
+    if trial_end_times is not None:
+        trial_data = pd.merge(trial_data, trial_end_times, on=TRIAL_NUMBER)
+        trial_durs = trial_data.loc[:, TRIAL_END_TIME] - trial_data.loc[:, TRIAL_START_TIME]
+        trial_data.loc[:, TRIAL_DUR_SEC] = [t.total_seconds() for t in trial_durs.tolist()]  # GET DIFF IN SECONDS
+    else:
+        trial_data.loc[:, [TRIAL_END_TIME, TRIAL_END, TRIAL_DUR_SEC, TRIAL_DUR_SEC]] = np.nan
+
     # mark trials per their condition based on trial number
     trial_data.loc[trial_data[TRIAL_NUMBER] >= empatica_parser.REPLAY_TRIAL, CONDITION] = REPLAY
     trial_data.loc[trial_data[TRIAL_NUMBER] < empatica_parser.REPLAY_TRIAL, CONDITION] = GAME
@@ -603,6 +731,16 @@ def load_sub_trial_data(sub_path):
     # same for SUBJ_ANS_IS12 (if subjective rating is 1 or 2)
     trial_data.loc[:, SUBJ_ANS_IS1] = np.where(trial_data[SUBJ_ANS] == 1, 1, 0)
     trial_data.loc[:, SUBJ_ANS_IS12] = np.where((trial_data[SUBJ_ANS] == 1) | (trial_data[SUBJ_ANS] == 2), 1, 0)
+    # reorder columns
+    new_order = [DATE, TRIAL_NUMBER, TRIAL_START_TIME, TRIAL_START, TRIAL_END_TIME, TRIAL_END, TRIAL_DUR_SEC,
+                 CONDITION, TRIAL_STIM_ID, TRIAL_STIM_NAME, TRIAL_STIM_VAL, TRIAL_SCRAMBLED_LOCS, LAST_INTACT_LOC,
+                 LAST_INTACT_TIME, CLUES_TAKEN, BEE_ANS, TRIAL_MONEY, BEE_CORRECT, BEE_SELECT_LOC,
+                 OBJ_TARGET_LOC, OBJ_TIME, OBJ_TIME_SELECTED, OBJ_ANS, OBJ_RT, OBJ_BUSSTOP,
+                 SUBJ_TIME, SUBJ_TIME_SELECTED, SUBJ_ANS, SUBJ_RT, SUBJ_BUSSTOP, SUBJ_ANS_IS1, SUBJ_ANS_IS12,
+                 VAL_ANS, VAL_ANS_CORRECT]
+    rest_of_cols = [c for c in trial_data.columns if c not in new_order]
+    new_order.extend(rest_of_cols)
+    trial_data = trial_data[new_order]
     return trial_data, busstop_gaze_data
 
 
@@ -619,13 +757,32 @@ def convert_str_cols_to_datetime(df):
     except TypeError:
         missing_cols.append(TRIAL_START_TIME)
     try:
+        df.loc[:, TRIAL_END_TIME] = [dt.datetime.strptime(t, '%Y-%m-%d %H:%M:%S.%f') for t in df[TRIAL_END_TIME].tolist()]
+        df.loc[:, TRIAL_END] = [d.time() for d in df[TRIAL_END_TIME].tolist()]
+    except TypeError:
+        missing_cols.append(TRIAL_END_TIME)
+    try:
         df.loc[:, TRIAL_START] = [d.time() for d in df[TRIAL_START_TIME].tolist()]
     except AttributeError:
         missing_cols.append(TRIAL_START)
     try:
-        df.loc[:, TRIAL_END] = [(t + dt.timedelta(seconds=TRIAL_DUR_SEC)).time() for t in df[TRIAL_START_TIME].tolist()]
+        df.loc[:, OBJ_TIME_SELECTED] = [dt.datetime.strptime(t, '%H:%M:%S.%f').time() for t in df[OBJ_TIME_SELECTED].tolist()]
     except TypeError:
-        missing_cols.append(TRIAL_END)
+        missing_cols.append(OBJ_TIME_SELECTED)
+    try:
+        df.loc[:, OBJ_TIME] = [dt.datetime.strptime(t, '%H:%M:%S.%f').time() for t in df[OBJ_TIME].tolist()]
+    except TypeError:
+        missing_cols.append(OBJ_TIME)
+
+    try:
+        df.loc[:, SUBJ_TIME_SELECTED] = [dt.datetime.strptime(t, '%H:%M:%S.%f').time() for t in df[SUBJ_TIME_SELECTED].tolist()]
+    except TypeError:
+        missing_cols.append(SUBJ_TIME_SELECTED)
+    try:
+        df.loc[:, SUBJ_TIME] = [dt.datetime.strptime(t, '%H:%M:%S.%f').time() for t in df[SUBJ_TIME].tolist()]
+    except TypeError:
+        missing_cols.append(SUBJ_TIME)
+
     if len(missing_cols) > 0:
         print(f"columns [{missing_cols}] are empty")
     return df
@@ -654,13 +811,19 @@ def extract_subject_data(sub_folder_path, sub_res_path):
             sub_trial_data = pd.read_csv(sub_trial_table_path)
             sub_trial_data = convert_str_cols_to_datetime(sub_trial_data)  # when reading, str needs to be converted to datetime
             # load bus stop gaze data
-            sub_busstop_gaze_data = pd.read_csv(busstop_trial_table_path)
-            sub_busstop_gaze_data[GAZE_START] = [dt.datetime.strptime(t, '%H:%M:%S.%f').time() for t in sub_busstop_gaze_data[GAZE_START].tolist()]
-            sub_busstop_gaze_data[GAZE_END] = [dt.datetime.strptime(t, '%H:%M:%S.%f').time() for t in sub_busstop_gaze_data[GAZE_END].tolist()]
+            if os.path.exists(busstop_trial_table_path):
+                sub_busstop_gaze_data = pd.read_csv(busstop_trial_table_path)
+                sub_busstop_gaze_data[GAZE_START] = [dt.datetime.strptime(t, '%H:%M:%S.%f').time() for t in sub_busstop_gaze_data[GAZE_START].tolist()]
+                sub_busstop_gaze_data[GAZE_END] = [dt.datetime.strptime(t, '%H:%M:%S.%f').time() for t in sub_busstop_gaze_data[GAZE_END].tolist()]
+            else:
+                sub_busstop_gaze_data = None
         else:
             sub_trial_data, sub_busstop_gaze_data = load_sub_trial_data(sub_path)  # subject behavior and ET data table
             sub_trial_data.to_csv(os.path.join(sub_output_path, "sub_trial_data.csv"), index=False)
-            sub_busstop_gaze_data.to_csv(os.path.join(sub_output_path, "sub_busstop_gaze_data.csv"), index=False)
+            if sub_busstop_gaze_data is not None:
+                sub_busstop_gaze_data.to_csv(os.path.join(sub_output_path, "sub_busstop_gaze_data.csv"), index=False)
+            else:
+                print(f"No gaze data for subject {sub}")
         # parse subject empatica data
         sub_trial_data, sub_peripheral_data = empatica_parser.load_sub_peripheral_data(sub_path, sub_trial_data, sub_busstop_gaze_data, sub_output_path, sub, sub_res_path)
         subject_data[sub] = {UNITY_OUTPUT_FOLDER: sub_trial_data, empatica_parser.EMPATICA_OUTPUT_FOLDER: sub_peripheral_data, ET_DATA_NAME: sub_busstop_gaze_data}

@@ -434,8 +434,8 @@ def preprocess_eda_data(sub_trial_data, general_output_path, sub_code):
     """
     eda_preprocessed_path = os.path.join(general_output_path, EDA_EXPLORER, sub_code)
     if not os.path.isdir(eda_preprocessed_path):
-        print(f"ERROR: subject {sub_code} does not have pre-processed EDA data. This subject is SKIPPED during analysis")
-        return None
+        print(f"ERROR: subject {sub_code} does not have pre-processed EDA data")
+        return None, None, None
     eda_peaks, eda_noise = load_preprocessed_eda(sub_code, eda_preprocessed_path)
     # Mark trials where there was noise as measured in the noise file (BEH_EDA_NOISE_COL col)
     sub_trial_data_eda_noise = noise_based_trial_exclusion(sub_trial_data, eda_noise)
@@ -447,10 +447,13 @@ def preprocess_empatica_data(empatica_data, sub_busstop_gaze_data, sub_trial_dat
     # preprocess the temperature data
     empatica_data_temp_updated = preprocess_temperature_data(sub_trial_data, empatica_data, sub_busstop_gaze_data, sub_output_path)
     # preprocess the EDA data and re-save sub trial data with it
-    sub_trial_data, eda_peaks, eda_noise = preprocess_eda_data(sub_trial_data, general_output_path, sub_code)
-    sub_trial_data.to_csv(os.path.join(sub_output_path, "sub_trial_data.csv"), index=False)
-    empatica_data_temp_updated[EDA_EXPLORER] = [eda_peaks, eda_noise]
-    return sub_trial_data, empatica_data_temp_updated
+    sub_trial_data_updated, eda_peaks, eda_noise = preprocess_eda_data(sub_trial_data, general_output_path, sub_code)
+    if sub_trial_data_updated is not None:
+        sub_trial_data.to_csv(os.path.join(sub_output_path, "sub_trial_data.csv"), index=False)
+        empatica_data_temp_updated[EDA_EXPLORER] = [eda_peaks, eda_noise]
+        return sub_trial_data_updated, empatica_data_temp_updated
+    else:
+        return sub_trial_data, empatica_data_temp_updated
 
 
 def load_sub_peripheral_data(sub_path, sub_trial_data, sub_busstop_gaze_data, sub_output_path, sub_code, general_output_path):

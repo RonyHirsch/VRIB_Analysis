@@ -10,7 +10,7 @@ In the first phase of the experiment (trials 1-40), the trials are novel, and pa
 In the second phase of the experiment (trials 41-50), the trials re-play randomly selected trials from the first phase; subject's are no longer supposed to play to maximize their gain, and the bees' speed is not affected by their performance (as the next trials is a replay of a previously played trial). Participants were instructed to look at the bus stops at the sides of the road, and ignore the bees. Notably, they were still asked all three questions at the end of each trial (select the bee, PAS rating, 4AFC). 
 
 The experiment's output is comprised of multiple txt files; some are outputted after each trial, while others are only updated and include information about all trials. 
-Thus, the custom-made Python data processing module aggregates each participant's collection of txt files - and puts it into readable dataframes that are easily aggregated and analyzed. 
+Thus, the custom-made Python data processing module aggregates each participant's collection of txt files - and puts it into readable dataframes that are easily aggregated and analyzed. The R script is where the linear modelling is performed. The rest of the analyses are done on JASP based on other csv outputs. 
 
 ## Python 
 
@@ -40,7 +40,6 @@ Two pilot experiments preceeded this preregistered experiment, which is the one 
 
 ## R
 Once the data is processed, the linear model analysis is done with R using the vrib_analysis script, run on the "avg_gaze_per_pas_long_intact.csv" file which is outputted by the et_analysis method in the gaze_analysis module. It combines both gaze and behavior data that are needed for the R modelling. 
-The rest of the analyses are done on JASP based on other csv outputs. 
 
 #### Author
 [Rony Hirschhorn](https://github.com/RonyHirsch/)

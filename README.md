@@ -9,7 +9,10 @@ At the end of each trial, subjects are asked to select the target bee, rate the 
 In the first phase of the experiment (trials 1-40), the trials are novel, and participants gain/lose money based on making the correct bee selection. The bees' speed is affected by factors such as subjects' answers and the number of clues they took, such that the speed in the following trial increase or decreases based on their performance. 
 In the second phase of the experiment (trials 41-50), the trials re-play randomly selected trials from the first phase; subject's are no longer supposed to play to maximize their gain, and the bees' speed is not affected by their performance (as the next trials is a replay of a previously played trial). Participants were instructed to look at the bus stops at the sides of the road, and ignore the bees. Notably, they were still asked all three questions at the end of each trial (select the bee, PAS rating, 4AFC). 
 
-The experiment's output is comprised of multiple txt files; some are outputted after each trial, while others are only updated and include information about all trials. Thus, this custom-made data processing module aggregates each participant's collection of txt files - and puts it into readable dataframes that are easily aggregated and analyzed. 
+The experiment's output is comprised of multiple txt files; some are outputted after each trial, while others are only updated and include information about all trials. 
+Thus, the custom-made Python data processing module aggregates each participant's collection of txt files - and puts it into readable dataframes that are easily aggregated and analyzed. 
+
+## Python 
 
 ### Analysis manager
 The main function in this code is the analysis manager, which calls all the relevant processing modules. First, it calls the parsing module, then the exclusion module to exclude subjects based on pre-defined criteria, and then it calls the two processing modules: the behavioral analysis and the gaze analysis. 
@@ -35,6 +38,9 @@ The plotter module is called from all modules that do any plotting. It contains 
 ### Peripheral analysis (depracated)
 Two pilot experiments preceeded this preregistered experiment, which is the one to be preprocessed by the current code. In the pilots, participants wore an [empatica bracelet](https://www.empatica.com/) which took peripheral measures such as temperature and heart-rate. As this data was not measured in the preregistered experiment, codes related to this peripheral analysis are commented out, and marked as depracated.
 
+## R
+Once the data is processed, the linear model analysis is done with R using the vrib_analysis script, run on the "avg_gaze_per_pas_long_intact.csv" file which is outputted by the et_analysis method in the gaze_analysis module. It combines both gaze and behavior data that are needed for the R modelling. 
+The rest of the analyses are done on JASP based on other csv outputs. 
 
 #### Author
 [Rony Hirschhorn](https://github.com/RonyHirsch/)

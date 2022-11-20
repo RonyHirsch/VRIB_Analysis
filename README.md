@@ -6,6 +6,11 @@ Meanwhile, critical stimuli (taken from IAPS database: Bradley and Lang, 2007) a
 Each trial contains ten presentations of a single critical stimulus; in three of them, the stimulus image is intact, and in seven, a scrambled version of it appears. 
 At the end of each trial, subjects are asked to select the target bee, rate the critical stimulus’ visibility on the Perceptual Awareness Scale (PAS; Ramsøy and Overgaard, 2004, a four-item scale where: 1=no experience, 2=brief glimpse, 3=almost clear experience, 4=clear experience) and select the stimulus image out of an array of four images (a 4-alternative forced choice task; 4AFC, an objective measure of awareness). 
 
+In the first phase of the experiment (trials 1-40), the trials are novel, and participants gain/lose money based on making the correct bee selection. The bees' speed is affected by factors such as subjects' answers and the number of clues they took, such that the speed in the following trial increase or decreases based on their performance. 
+In the second phase of the experiment (trials 41-50), the trials re-play randomly selected trials from the first phase; subject's are no longer supposed to play to maximize their gain, and the bees' speed is not affected by their performance (as the next trials is a replay of a previously played trial). Participants were instructed to look at the bus stops at the sides of the road, and ignore the bees. Notably, they were still asked all three questions at the end of each trial (select the bee, PAS rating, 4AFC). 
+
+The experiment's output is comprised of multiple txt files; some are outputted after each trial, while others are only updated and include information about all trials. Thus, this custom-made data processing module aggregates each participant's collection of txt files - and puts it into readable dataframes that are easily aggregated and analyzed. 
+
 ### Analysis manager
 The main function in this code is the analysis manager, which calls all the relevant processing modules. First, it calls the parsing module, then the exclusion module to exclude subjects based on pre-defined criteria, and then it calls the two processing modules: the behavioral analysis and the gaze analysis. 
 Gaze data was collected via VIVE PRO EYE's eye tracker and logged via an internal logging system. 

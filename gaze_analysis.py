@@ -56,7 +56,7 @@ def plot_avg_gaze(all_subs_df, save_path, cond_name=" "):
                            x_axis_names=x_axis, x_values=x_axis_vals, y_tick_names=None,
                            group_col_name="Image Type",
                            group_name_mapping={"True": INTACT, "False": SCRAMBLED},
-                           x_col_color_order=[["#55868C", "#55868C", "#55868C", "#55868C"], ["#C8AB83", "#C8AB83", "#C8AB83", "#C8AB83"]],
+                           x_col_color_order=[["#2E4052", "#2E4052", "#2E4052", "#2E4052"], ["#22577A", "#22577A", "#22577A", "#22577A"]],
                           alpha_step=0, valpha=0.6)
 
     df.to_csv(os.path.join(save_path, "avg_gaze_duration_per_vis_intact_scrambled.csv"))
@@ -64,11 +64,14 @@ def plot_avg_gaze(all_subs_df, save_path, cond_name=" "):
 
 
 def analyze_valence_gaze(all_subs_df, save_path, cond_name):
-    relevant_cols = [SUB, parse_data_files.SUBJ_ANS, parse_data_files.TRIAL_NUMBER, parse_data_files.TRIAL_STIM_VAL, parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT, parse_data_files.BUSSTOP_GAZE_DUR_AVG_SCRAMBLED]
+    relevant_cols = [SUB, parse_data_files.SUBJ_ANS, parse_data_files.TRIAL_NUMBER, parse_data_files.OBJ_ANS,
+                     parse_data_files.SUBJ_BUSSTOP, parse_data_files.OBJ_BUSSTOP, parse_data_files.TRIAL_STIM_VAL,
+                     parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT, parse_data_files.BUSSTOP_GAZE_DUR_AVG_SCRAMBLED]
     df = all_subs_df[relevant_cols]
     # first, process df into a long format and save it
     long_df = pd.melt(df, id_vars=relevant_cols[:-2], value_vars=relevant_cols[-2:], var_name="presentation")
     long_df.loc[:, "presentation"] = long_df["presentation"].map({parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT: "intact", parse_data_files.BUSSTOP_GAZE_DUR_AVG_SCRAMBLED: "scrambled"})
+    long_df.rename({"value": "avgBusstopGazeDuration"}, axis=1, inplace=True)
     long_df.to_csv(os.path.join(save_path, f"avg_gaze_per_pas_long.csv"), index=False)
 
     pas_ratings = [1, 2, 3, 4, "234"]

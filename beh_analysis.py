@@ -336,7 +336,8 @@ def behavioral_analysis(all_subs_df, save_path):
                          x_axis_names=["Unseen (PAS 1)", "Seen (PAS 2-4)"], y_tick_names=None, x_values=[1, 2], add_horizontal_line=25)
 
 
-    # ANALYSIS 4: WERE SUBJECTS AT CHANCE IN THE VALENCE TASK WHEN VISIBILITY WAS 1
+    # ANALYSIS 4: WERE SUBJECTS AT CHANCE IN THE VALENCE TASK WHEN VISIBILITY WAS 1  - DEPRACATED
+    """
     pas_val_perf(all_subs_df, beh_output_path)
 
     val_across = dict()
@@ -360,9 +361,18 @@ def behavioral_analysis(all_subs_df, save_path):
                            y_tick_interval=25, y_tick_min=0, y_tick_max=100,
                            x_axis_names=["Unseen (PAS 1)", "Seen (PAS 2-4)"], y_tick_names=None,  x_values=[1, 2], add_horizontal_line=50)
 
-
+    """
     # ANALYSIS 5: WERE SUBJECTS BETTER IN OBJECTIVE TASK FOR AVERSIVE / NEUTRAL STIMULI?
     val_obj_perf(all_subs_df, beh_output_path)
+
+    # ANALYSIS 6: PLOT THE RELATIONSHIPS BETWEEN TIME TO OBJECTIVE TASK, AND OBJECTIVE TASK PERFORMANCE
+    plotter.plot_raincloud(df=all_subs_df, x_col_name="objectiveIsCorrect", y_col_name="objectiveTimeFromLastIntactSec",
+                           plot_title="SOA and Performance in Objective Task",
+                           plot_x_name="Is Correct in 4AFC", plot_y_name="Time Between Last Intact and 4AFC (seconds)",
+                           save_path=beh_output_path, save_name="4AFC_SOA",
+                           x_col_color_order=[["#337C8E", "#972B60"]],
+                           y_tick_interval=25, y_tick_min=0, y_tick_max=100,
+                           x_axis_names=["0", "1"], y_tick_names=None, x_values=[False, True])
 
     return
 

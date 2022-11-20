@@ -241,7 +241,7 @@ def load_trial_stim_info(sub_path):
     return trial_data
 
 
-def helper_mark_trial(df):
+def enumerate_trials(df):
     start_flag = False
     end_flag = False
     curr_trial = -1
@@ -259,6 +259,22 @@ def helper_mark_trial(df):
         else:
             if start_flag and not (end_flag):
                 df.at[ind, 3] = curr_trial
+    return df
+
+
+def helper_mark_trial(df):
+    df = enumerate_trials(df)  # mark trial numbers
+    if SCORE_START in df[1].unique():
+        return df  # skip the following check below, as the file to be checked below is an ET file and this is not it.
+    else:  # sanity check for the file, as subject 393928 had a couple of interruptions during the game which messed up the ET file a bit
+        for trial in df[3].unique():
+            trial_data = df[df[3] == trial]
+            if (GAZE_START in trial_data[1].unique() and GAZE_END not in trial_data[1].unique()) \
+                    or (GAZE_START not in trial_data[1].unique() and GAZE_END in trial_data[1].unique()):
+                # there are start times without end times // end times without start times - this trial is interrupted hence should be dropped
+                df.iloc[list(np.where(df[3] == trial)), 3] = -1  # invalidate this trial
+        df = df.drop(df[df[3] == -1].index, inplace=False).reset_index(drop=True, inplace=False)
+        df = enumerate_trials(df)  # repeat w/o the partial (interrupted) trials
     return df
 
 
@@ -457,20 +473,24 @@ def load_trial_subjQ_info(sub_path, trial_df):
     # valence
     valQ_file = [f for f in os.listdir(sub_path) if VALENCE_Q in f][0]
     valQ_data = pd.read_csv(os.path.join(sub_path, valQ_file), sep="\t", header=None, names=[i for i in range(4)])
-    valQ_data = valQ_data[valQ_data[2] == SELECTED_LOC].reset_index(drop=True)
-    trial_df.loc[:, VAL_ANS] = pd.Series(valQ_data[3].astype(int))
-    """
-    IMPORTANT: IN THE ACTUAL VALENCE ANSWER, 0 AND 1 ARE THE *LOCATIONS* OF THE CHOSEN ANSWER.
-    THE *LEFT* DISTRACTOR, 0, IS "YES - THE PICTURE WAS NEGATIVE". AND THE *RIGHT* DISTRACTOR, I.E, 1, IS 
-    "NO, THE IMAGE WAS NOT NEGATIVE". MEANING, THAT TO MATCH VAL_ANS WITH TRIAL_STIM_VAL (WHERE 1=AVERSIVE & 0=NEUTRAL)
-    WE NEED TO ***FLIP*** THE VAL_ANS COLUMN.
-    """
-    trial_df.replace({VAL_ANS: {1: 0, 0: 1}}, inplace=True)
-    correct_conditions = [(pd.isna(trial_df[VAL_ANS]) & pd.isna(trial_df[TRIAL_STIM_VAL])),
-                          trial_df[VAL_ANS] == trial_df[TRIAL_STIM_VAL],
-                          trial_df[VAL_ANS] != trial_df[TRIAL_STIM_VAL]]
-    correct_options = [np.nan, True, False]
-    trial_df[VAL_ANS_CORRECT] = np.select(correct_conditions, correct_options, default=np.nan)
+    if valQ_data.shape[0] != 0:  # ONLY if we even collected this data; otherwise, the valenceQ was skipped (2022-07-30 build) and there's nothing here
+        valQ_data = valQ_data[valQ_data[2] == SELECTED_LOC].reset_index(drop=True)
+        trial_df.loc[:, VAL_ANS] = pd.Series(valQ_data[3].astype(int))
+        """
+        IMPORTANT: IN THE ACTUAL VALENCE ANSWER, 0 AND 1 ARE THE *LOCATIONS* OF THE CHOSEN ANSWER.
+        THE *LEFT* DISTRACTOR, 0, IS "YES - THE PICTURE WAS NEGATIVE". AND THE *RIGHT* DISTRACTOR, I.E, 1, IS 
+        "NO, THE IMAGE WAS NOT NEGATIVE". MEANING, THAT TO MATCH VAL_ANS WITH TRIAL_STIM_VAL (WHERE 1=AVERSIVE & 0=NEUTRAL)
+        WE NEED TO ***FLIP*** THE VAL_ANS COLUMN.
+        """
+        trial_df.replace({VAL_ANS: {1: 0, 0: 1}}, inplace=True)
+        correct_conditions = [(pd.isna(trial_df[VAL_ANS]) & pd.isna(trial_df[TRIAL_STIM_VAL])),
+                              trial_df[VAL_ANS] == trial_df[TRIAL_STIM_VAL],
+                              trial_df[VAL_ANS] != trial_df[TRIAL_STIM_VAL]]
+        correct_options = [np.nan, True, False]
+        trial_df[VAL_ANS_CORRECT] = np.select(correct_conditions, correct_options, default=np.nan)
+    else:
+        trial_df.loc[:, VAL_ANS] = np.nan
+        trial_df.loc[:, VAL_ANS_CORRECT] = np.nan
     return trial_df
 
 
@@ -500,7 +520,7 @@ def helper_calculate_durs(df):
                 which is column #0). 
                 """
                 start = float(trial_data.loc[ind, 0])
-                end = float(trial_data.loc[ind+1, 0])
+                end = float(trial_data.loc[ind + 1, 0])
                 new_df.at[ind, 0] = trial_data.loc[ind+1, 0]
                 new_df.at[ind, 1] = GAZE_DURATION
                 new_df.at[ind, 2] = (end - start) / 1000  # the difference between the stamps is in MILLISECONDS, / 1000 converts to seconds
@@ -718,9 +738,12 @@ def load_sub_trial_data(sub_path):
     trial_start_times, trial_end_times = get_trial_times(sub_unity_path)  # get trial start times
     trial_data = pd.merge(trial_data, trial_start_times, on=TRIAL_NUMBER)
     if trial_end_times is not None:
-        trial_data = pd.merge(trial_data, trial_end_times, on=TRIAL_NUMBER)
-        trial_durs = trial_data.loc[:, TRIAL_END_TIME] - trial_data.loc[:, TRIAL_START_TIME]
-        trial_data.loc[:, TRIAL_DUR_SEC] = [t.total_seconds() for t in trial_durs.tolist()]  # GET DIFF IN SECONDS
+        if trial_end_times.shape[0] != 0:
+            trial_data = pd.merge(trial_data, trial_end_times, on=TRIAL_NUMBER)
+            trial_durs = trial_data.loc[:, TRIAL_END_TIME] - trial_data.loc[:, TRIAL_START_TIME]
+            trial_data.loc[:, TRIAL_DUR_SEC] = [t.total_seconds() for t in trial_durs.tolist()]  # GET DIFF IN SECONDS
+        else:
+            trial_data.loc[:, [TRIAL_END_TIME, TRIAL_END, TRIAL_DUR_SEC, TRIAL_DUR_SEC]] = np.nan
     else:
         trial_data.loc[:, [TRIAL_END_TIME, TRIAL_END, TRIAL_DUR_SEC, TRIAL_DUR_SEC]] = np.nan
 
@@ -738,10 +761,26 @@ def load_sub_trial_data(sub_path):
                  OBJ_TARGET_LOC, OBJ_TIME, OBJ_TIME_SELECTED, OBJ_ANS, OBJ_RT, OBJ_BUSSTOP,
                  SUBJ_TIME, SUBJ_TIME_SELECTED, SUBJ_ANS, SUBJ_RT, SUBJ_BUSSTOP, SUBJ_ANS_IS1, SUBJ_ANS_IS12,
                  VAL_ANS, VAL_ANS_CORRECT]
-    rest_of_cols = [c for c in trial_data.columns if c not in new_order]
+
+    rest_of_cols = [c for c in trial_data.columns if c not in new_order]  # all the ET-bus stop columns
     new_order.extend(rest_of_cols)
     trial_data = trial_data[new_order]
+    if trial_data[VAL_ANS].isnull().all():  # no valence Q asked (build 2022-07-30)
+        trial_data.drop([VAL_ANS, VAL_ANS_CORRECT], axis=1, inplace=True)
     return trial_data, busstop_gaze_data
+
+
+def time_add_ms(df, col):
+    time_list = list()
+    original_times = df[col].tolist()
+    for t in original_times:
+        try:
+            time_list.append(dt.datetime.strptime(t, '%H:%M:%S.%f').time())
+        except ValueError:
+            ms = ".000000"
+            t = t + ms
+            time_list.append(dt.datetime.strptime(t, '%H:%M:%S.%f').time())
+    return time_list
 
 
 def convert_str_cols_to_datetime(df):
@@ -756,32 +795,46 @@ def convert_str_cols_to_datetime(df):
         df.loc[:, DATE] = [d.date() for d in df[TRIAL_START_TIME].tolist()]
     except TypeError:
         missing_cols.append(TRIAL_START_TIME)
+
     try:
         df.loc[:, TRIAL_END_TIME] = [dt.datetime.strptime(t, '%Y-%m-%d %H:%M:%S.%f') for t in df[TRIAL_END_TIME].tolist()]
         df.loc[:, TRIAL_END] = [d.time() for d in df[TRIAL_END_TIME].tolist()]
     except TypeError:
         missing_cols.append(TRIAL_END_TIME)
+
     try:
         df.loc[:, TRIAL_START] = [d.time() for d in df[TRIAL_START_TIME].tolist()]
     except AttributeError:
         missing_cols.append(TRIAL_START)
+
     try:
         df.loc[:, OBJ_TIME_SELECTED] = [dt.datetime.strptime(t, '%H:%M:%S.%f').time() for t in df[OBJ_TIME_SELECTED].tolist()]
     except TypeError:
         missing_cols.append(OBJ_TIME_SELECTED)
+    except ValueError:  # there's one with a value which is exactly on the second (00ms), do it manually
+        time_list = time_add_ms(df, OBJ_TIME_SELECTED)
+        df.loc[:, OBJ_TIME_SELECTED] = time_list
+
     try:
         df.loc[:, OBJ_TIME] = [dt.datetime.strptime(t, '%H:%M:%S.%f').time() for t in df[OBJ_TIME].tolist()]
     except TypeError:
         missing_cols.append(OBJ_TIME)
+    except ValueError:  # there's one with a value which is exactly on the second (00ms), do it manually
+        time_list = time_add_ms(df, OBJ_TIME)
+        df.loc[:, OBJ_TIME] = time_list
 
     try:
         df.loc[:, SUBJ_TIME_SELECTED] = [dt.datetime.strptime(t, '%H:%M:%S.%f').time() for t in df[SUBJ_TIME_SELECTED].tolist()]
     except TypeError:
         missing_cols.append(SUBJ_TIME_SELECTED)
+
     try:
         df.loc[:, SUBJ_TIME] = [dt.datetime.strptime(t, '%H:%M:%S.%f').time() for t in df[SUBJ_TIME].tolist()]
     except TypeError:
         missing_cols.append(SUBJ_TIME)
+    except ValueError:  # there's one with a value which is exactly on the second (00ms), do it manually
+        time_list = time_add_ms(df, SUBJ_TIME)
+        df.loc[:, SUBJ_TIME] = time_list
 
     if len(missing_cols) > 0:
         print(f"columns [{missing_cols}] are empty")

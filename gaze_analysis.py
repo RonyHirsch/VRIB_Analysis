@@ -8,6 +8,16 @@ import seaborn as sns
 import plotter
 import parse_data_files
 
+""" VRIB gaze analysis manager
+
+This module manages everything related to the processing of eye-tracking data towards analysis. Note that the statistical
+analyses themselves (linear mixed models, t-tests etc) are not done here; the goal of this module is to output summary
+data and plots, as well as aggregate data into a group dataframe that will be later analyzed with R (for linear models)
+and JASP (for t-tests). 
+
+@authors: RonyHirsch
+"""
+
 SUB = "Subject"
 INTACT = "Intact"
 SCRAMBLED = "Scrambled"

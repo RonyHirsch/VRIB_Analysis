@@ -4,6 +4,14 @@ import numpy as np
 import datetime as dt
 import empatica_parser
 
+""" VRIB data parser
+
+This module loads and parses the VRIB data, managed by the main method "extract_subject_data" which is called by 
+the analysis manager module. 
+
+@authors: RonyHirsch
+"""
+
 UNITY_OUTPUT_FOLDER = "beh"
 ET_DATA_NAME = "et"
 TRIAL_NUMBER = "trialNumber"

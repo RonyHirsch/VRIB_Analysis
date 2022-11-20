@@ -6,6 +6,15 @@ import beh_analysis
 import peripheral_analysis
 import exclusion_criteria
 
+
+""" VRIB analysis manager
+
+This module manages everything related to the parsing and processing of the behavioral and eye-tracking output data 
+of the VRIB experiment (see https://osf.io/6jyqx). 
+
+@authors: RonyHirsch
+"""
+
 SUB = "Subject"
 INTACT = "Intact"
 SCRAMBLED = "Scrambled"
@@ -39,8 +48,8 @@ def manage_analyses(data_path, save_path):
 
 
 if __name__ == "__main__":
-    manage_analyses(data_path=r"/raw",
-                    save_path=r"/processed")
+    manage_analyses(data_path=r"raw",
+                    save_path=r"processed")
 
 
 

@@ -1,16 +1,15 @@
-import pandas as pd
 from scipy.stats import binomtest
-import os
-import re
-import math
-import numpy as np
-import itertools
-import seaborn as sns
-import plotter
 import parse_data_files
-import gaze_analysis
-import beh_analysis
-import peripheral_analysis
+
+
+""" VRIB exclusion criteria
+
+This module manages everything related to subject data exclusion, based on pre-registered requirements regarding
+participant's behavior. The main method here is beh_exclusion, which is called by the analysis_manager module. 
+
+@authors: RonyHirsch
+"""
+
 
 NUM_OF_TRIALS = 50
 REPLAY_TRIAL = 40

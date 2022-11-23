@@ -8,6 +8,8 @@ import seaborn as sns
 import plotter
 import parse_data_files
 
+pd.options.mode.chained_assignment = None  # default='warn' see: https://stackoverflow.com/questions/20625582/how-to-deal-with-settingwithcopywarning-in-pandas
+
 """ VRIB gaze analysis manager
 
 This module manages everything related to the processing of eye-tracking data towards analysis. Note that the statistical

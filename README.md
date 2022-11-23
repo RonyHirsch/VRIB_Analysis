@@ -14,6 +14,8 @@ Thus, the custom-made Python data processing module aggregates each participant'
 
 ## Python 
 
+Project interpreter: Python 3.7
+
 ### Analysis manager
 The main function in this code is the analysis manager, which calls all the relevant processing modules. First, it calls the parsing module, then the exclusion module to exclude subjects based on pre-defined criteria, and then it calls the two processing modules: the behavioral analysis and the gaze analysis. 
 Gaze data was collected via VIVE PRO EYE's eye tracker and logged via an internal logging system. 

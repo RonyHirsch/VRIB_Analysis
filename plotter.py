@@ -7,6 +7,8 @@ import matplotlib.patches as mpatches
 import seaborn as sns
 import numpy as np
 
+pd.options.mode.chained_assignment = None  # default='warn' see: https://stackoverflow.com/questions/20625582/how-to-deal-with-settingwithcopywarning-in-pandas
+
 # plot parameters
 F_AXES_NAME = 11
 F_AXES_TITLE = 12

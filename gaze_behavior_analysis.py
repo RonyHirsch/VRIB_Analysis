@@ -9,6 +9,8 @@ import parse_data_files
 import plotter
 import stats_module
 
+pd.options.mode.chained_assignment = None  # default='warn' see: https://stackoverflow.com/questions/20625582/how-to-deal-with-settingwithcopywarning-in-pandas
+
 BEH = "BEH"
 ET = "ET"
 MEAN = "Average"

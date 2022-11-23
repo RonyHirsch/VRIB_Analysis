@@ -9,6 +9,8 @@ import datetime as dt
 from dateutil import tz
 import parse_data_files
 
+pd.options.mode.chained_assignment = None  # default='warn' see: https://stackoverflow.com/questions/20625582/how-to-deal-with-settingwithcopywarning-in-pandas
+
 ACC = "ACC"
 BVP = "BVP"
 EDA = "EDA"

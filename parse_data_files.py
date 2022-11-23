@@ -4,6 +4,8 @@ import numpy as np
 import datetime as dt
 import empatica_parser
 
+pd.options.mode.chained_assignment = None  # default='warn' see: https://stackoverflow.com/questions/20625582/how-to-deal-with-settingwithcopywarning-in-pandas
+
 """ VRIB data parser
 
 This module loads and parses the VRIB data, managed by the main method "extract_subject_data" which is called by 

@@ -10,6 +10,8 @@ import plotter
 import cluster_based_permutation_analysis
 import gaze_analysis
 
+pd.options.mode.chained_assignment = None  # default='warn' see: https://stackoverflow.com/questions/20625582/how-to-deal-with-settingwithcopywarning-in-pandas
+
 SAMPLE_NUM = "sampleNum"
 DELTA_TEMP = "deltaTemp"
 AVERSIVE = "Aversive"

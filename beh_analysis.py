@@ -6,6 +6,7 @@ import parse_data_files
 import plotter
 import exclusion_criteria
 
+pd.options.mode.chained_assignment = None  # default='warn' see: https://stackoverflow.com/questions/20625582/how-to-deal-with-settingwithcopywarning-in-pandas
 
 """ VRIB beh analysis manager
 

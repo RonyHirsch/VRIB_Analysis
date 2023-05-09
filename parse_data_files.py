@@ -480,7 +480,7 @@ def load_trial_subjQ_info(sub_path, trial_df):
     subjQ_list = [int(x)+1 for x in subjQ_data[3].tolist()]  # the +1 is to convert the ratings coded in [0, 3] to PAS [1, 4]
     trial_df.loc[:, SUBJ_ANS] = pd.Series(subjQ_list)  # add as a column, fill with nans if missing trials
 
-    # valence
+    # valence - DEPRACATED
     valQ_file = [f for f in os.listdir(sub_path) if VALENCE_Q in f][0]
     valQ_data = pd.read_csv(os.path.join(sub_path, valQ_file), sep="\t", header=None, names=[i for i in range(4)])
     if valQ_data.shape[0] != 0:  # ONLY if we even collected this data; otherwise, the valenceQ was skipped (2022-07-30 build) and there's nothing here
@@ -811,6 +811,8 @@ def convert_str_cols_to_datetime(df):
         df.loc[:, TRIAL_END] = [d.time() for d in df[TRIAL_END_TIME].tolist()]
     except TypeError:
         missing_cols.append(TRIAL_END_TIME)
+    except KeyError:
+        x = 4  # do nothing, this means that this is pilot data where this column did not exist
 
     try:
         df.loc[:, TRIAL_START] = [d.time() for d in df[TRIAL_START_TIME].tolist()]
@@ -824,6 +826,8 @@ def convert_str_cols_to_datetime(df):
     except ValueError:  # there's one with a value which is exactly on the second (00ms), do it manually
         time_list = time_add_ms(df, OBJ_TIME_SELECTED)
         df.loc[:, OBJ_TIME_SELECTED] = time_list
+    except KeyError:
+        x = 4  # do nothing, this means that this is pilot data where this column did not exist
 
     try:
         df.loc[:, OBJ_TIME] = [dt.datetime.strptime(t, '%H:%M:%S.%f').time() for t in df[OBJ_TIME].tolist()]
@@ -832,11 +836,15 @@ def convert_str_cols_to_datetime(df):
     except ValueError:  # there's one with a value which is exactly on the second (00ms), do it manually
         time_list = time_add_ms(df, OBJ_TIME)
         df.loc[:, OBJ_TIME] = time_list
+    except KeyError:
+        x = 4  # do nothing, this means that this is pilot data where this column did not exist
 
     try:
         df.loc[:, SUBJ_TIME_SELECTED] = [dt.datetime.strptime(t, '%H:%M:%S.%f').time() for t in df[SUBJ_TIME_SELECTED].tolist()]
     except TypeError:
         missing_cols.append(SUBJ_TIME_SELECTED)
+    except KeyError:
+        x = 4  # do nothing, this means that this is pilot data where this column did not exist
 
     try:
         df.loc[:, SUBJ_TIME] = [dt.datetime.strptime(t, '%H:%M:%S.%f').time() for t in df[SUBJ_TIME].tolist()]
@@ -845,6 +853,8 @@ def convert_str_cols_to_datetime(df):
     except ValueError:  # there's one with a value which is exactly on the second (00ms), do it manually
         time_list = time_add_ms(df, SUBJ_TIME)
         df.loc[:, SUBJ_TIME] = time_list
+    except KeyError:
+        x = 4  # do nothing, this means that this is pilot data where this column did not exist
 
     if len(missing_cols) > 0:
         print(f"columns [{missing_cols}] are empty")
@@ -852,6 +862,7 @@ def convert_str_cols_to_datetime(df):
 
 
 def extract_subject_data(sub_folder_path, sub_res_path):
+    import csv
     # Open up data files for saving processing outputs
     persub_output_path = os.path.join(sub_res_path, PER_SUBJECT)
     if not (os.path.isdir(persub_output_path)):
@@ -871,11 +882,11 @@ def extract_subject_data(sub_folder_path, sub_res_path):
         busstop_trial_table_path = os.path.join(sub_output_path, "sub_busstop_gaze_data.csv")
         if os.path.exists(sub_trial_table_path):
             # load trial data
-            sub_trial_data = pd.read_csv(sub_trial_table_path)
+            sub_trial_data = pd.read_csv(sub_trial_table_path, quoting=csv.QUOTE_NONE)
             sub_trial_data = convert_str_cols_to_datetime(sub_trial_data)  # when reading, str needs to be converted to datetime
             # load bus stop gaze data
             if os.path.exists(busstop_trial_table_path):
-                sub_busstop_gaze_data = pd.read_csv(busstop_trial_table_path)
+                sub_busstop_gaze_data = pd.read_csv(busstop_trial_table_path, quoting=csv.QUOTE_NONE)
                 sub_busstop_gaze_data[GAZE_START] = [dt.datetime.strptime(t, '%H:%M:%S.%f').time() for t in sub_busstop_gaze_data[GAZE_START].tolist()]
                 sub_busstop_gaze_data[GAZE_END] = [dt.datetime.strptime(t, '%H:%M:%S.%f').time() for t in sub_busstop_gaze_data[GAZE_END].tolist()]
             else:

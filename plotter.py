@@ -23,9 +23,9 @@ LINE = 'line'
 
 JITTER_WIDTH = 0.12
 VIOLIN_OFFSET = 0.35
-SCATTER_MARKER_SIZE = 6
-SCATTER_MARKER_ALPHA = 0.8
-VIOLIN_ALPHA = 0.7
+SCATTER_MARKER_SIZE = 8
+SCATTER_MARKER_ALPHA = 0.5
+VIOLIN_ALPHA = 0.5
 ALPHA_STEP = 0.2
 LINE_WIDTH = 0.5
 VIOLIN_EDGE_COLOR = "black"
@@ -39,6 +39,10 @@ BUFFER = 0.01
 W = 10
 H = 7.5
 DPI = 1000
+
+
+def plot_PAS_comp_task(path_to_pas):
+    return
 
 
 def plot_bar(df, x_col_name, y_col_name, plot_title, plot_x_name, plot_y_name, save_path, save_name, hue_col_name=None,
@@ -84,7 +88,7 @@ def make_it_rain(df, x_col_name, y_col_name, x_col_color_order, violin_alpha=VIO
                  marker_alpha=SCATTER_MARKER_ALPHA, x_values=None, right=None):
 
     #sns.set_theme(style="whitegrid")
-    sns.set_theme(style="white")
+    sns.set_style(style="ticks")
 
     violins_list = list()
     positions_list = list()
@@ -109,17 +113,30 @@ def make_it_rain(df, x_col_name, y_col_name, x_col_color_order, violin_alpha=VIO
                 data = [y if not (np.isnan(y)) else 0 for y in violins_list[c][y_col_name]]  # ZEROS out the nans
             if not(all(isinstance(x, (int, float)) for x in data)):
                 data = np.where(data, 1, 0)  # replace True with 1, False with 0
+
             # violin_plot: just a single violin!
-            violin = plt.violinplot(data, positions=[positions_list[c]], showmeans=False, showextrema=False,
-                                    showmedians=False)
+            violin = plt.violinplot(data, positions=[positions_list[c]], showmeans=True, showextrema=False, showmedians=False)
+
+            # change the color of the mean lines (showmeans=True)
+            violin['cmeans'].set_color("black")
+            violin['cmeans'].set_linewidth(1)
+            # control the length like before
+            m = np.mean(violin['cmeans'].get_paths()[0].vertices[:, 0])
+            if right is None or right is False:
+                violin['cmeans'].get_paths()[0].vertices[:, 0] = np.clip(violin['cmeans'].get_paths()[0].vertices[:, 0], -np.inf, m)
+            else:
+                violin['cmeans'].get_paths()[0].vertices[:, 0] = np.clip(violin['cmeans'].get_paths()[0].vertices[:, 0], m, np.inf)
+
             # get the color of the first violin to be the legend color
             if legend_flag == 0:
                 vio = violin['bodies'][0]
                 legend_flag = 1
+
             # make it a half-violin plot (only to the LEFT of center)
             b = violin['bodies'][0]  # single violin = single body
             # set alpha
             b.set_alpha(violin_alpha)
+
             # make it a half violin
             m = np.mean(b.get_paths()[0].vertices[:, 0])  # get the center
             if right is None or right is False:
@@ -131,17 +148,21 @@ def make_it_rain(df, x_col_name, y_col_name, x_col_color_order, violin_alpha=VIO
             if x_col_color_order is not None:
                 b.set_color(x_col_color_order[c])
             # add violin edges
-            b.set_edgecolor(VIOLIN_EDGE_COLOR)
+            b.set_edgecolor(x_col_color_order[c])  # VIOLIN_EDGE_COLOR
+
             b.set_linewidth(1)
             # then scatter
-            scat_x = (np.ones(len(data)) * positions_list[c]) + VIOLIN_OFFSET + (
-                    np.random.rand(len(data)) * JITTER_WIDTH / 2.)
-            plt.scatter(x=scat_x, y=data, marker="o", color=x_col_color_order[c], alpha=marker_alpha,
-                        s=SCATTER_MARKER_SIZE)
+            if right is None or right is False:
+                scat_x = (np.ones(len(data)) * (positions_list[c] - 0.09)) + (np.random.rand(len(data)) * 0.09)
+            else:
+                scat_x = (np.ones(len(data)) * (positions_list[c] + 0.09)) + (np.random.rand(len(data)) * 0.09)
+            plt.scatter(x=scat_x, y=data, marker="o", color=x_col_color_order[c], alpha=marker_alpha, s=SCATTER_MARKER_SIZE, edgecolor=x_col_color_order[c])
+
             # complete with a boxplot
-            plt.boxplot(data, positions=[positions_list[c] + VIOLIN_OFFSET], notch=False,
-                        medianprops=dict(color='black', linewidth=LINE_WIDTH),
-                        showfliers=False)
+            #plt.boxplot(data, positions=[positions_list[c] + VIOLIN_OFFSET], notch=False,
+            #            medianprops=dict(color='black', linewidth=LINE_WIDTH),
+            #            showfliers=False)
+
     return vio
 
 
@@ -224,12 +245,69 @@ def plot_raincloud(df, x_col_name, y_col_name, plot_title, plot_x_name, plot_y_n
     if len(df[x_col_name].unique().tolist()) > 10:  # a wide plot
         figure.set_size_inches(20, 10)
     figure.savefig(os.path.join(save_path, f"{save_name}.png"), dpi=DPI, bbox_inches='tight')
+    figure.savefig(os.path.join(save_path, f"{save_name}.svg"), format="svg", dpi=DPI, bbox_inches='tight')
 
     del figure
     plt.clf()
     plt.cla()
     plt.close()
     gc.collect()
+    return
+
+
+def regression_plot(X,y, y_pred, x_axis, y_axis, title, save_path, save_name, scatter_color="#361f27", line_color="#912f56"):
+    gc.collect()
+    plt.clf()
+    plt.figure()
+    sns.reset_orig()
+
+    #plt.scatter(X, y, color='black')
+    sns.scatterplot(x=X, y=y, c="#361f27", s=7)
+    plt.plot(X, y_pred, color="#912f56")
+    plt.xlabel(x_axis, fontsize=F_AXES_TITLE, labelpad=LABELPAD)
+    plt.ylabel(y_axis, fontsize=F_AXES_TITLE, labelpad=LABELPAD)
+    plt.title(title, fontsize=F_TITLE, pad=LABELPAD)
+
+    figure = plt.gcf()  # get current figure
+    plt.savefig(os.path.join(save_path, f"{LINE}_{save_name}.png"), dpi=DPI, bbox_inches='tight')
+    plt.legend().remove()
+
+    del figure
+    plt.clf()
+    plt.cla()
+    plt.close()
+    gc.collect()
+    return
+
+
+def simple_avg_line(df, x_col_name, avg_col_name, std_col_name, line_color, plot_title, plot_x_name, plot_y_name,
+                    save_path, save_name, y_tick_interval=5, y_tick_labels=None, y_tick_min=None, y_tick_max=None):
+    gc.collect()
+    plt.clf()
+    plt.figure()
+    sns.reset_orig()
+
+    sns.lineplot(x=x_col_name, y=avg_col_name, data=df, color=line_color, label="")
+    plt.fill_between(df.index.values.tolist(),
+                     [y - sd for y, sd in zip(df[avg_col_name], df[std_col_name])],
+                     [y + sd for y, sd in zip(df[avg_col_name], df[std_col_name])],
+                     alpha=.2, color=line_color)
+
+    plt.xticks(fontsize=F_AXES_NAME)
+    plt.title(plot_title, fontsize=F_TITLE, pad=LABELPAD)
+    plt.xlabel(plot_x_name, fontsize=F_AXES_TITLE, labelpad=LABELPAD)
+    plt.ylabel(plot_y_name, fontsize=F_AXES_TITLE, labelpad=LABELPAD)
+
+    plt.legend().remove()
+    figure = plt.gcf()  # get current figure
+    plt.savefig(os.path.join(save_path, f"{LINE}_{save_name}.png"), dpi=DPI, bbox_inches='tight')
+
+    del figure
+    plt.clf()
+    plt.cla()
+    plt.close()
+    gc.collect()
+
     return
 
 

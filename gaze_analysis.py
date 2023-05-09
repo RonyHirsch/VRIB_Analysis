@@ -1,9 +1,7 @@
 import pandas as pd
 import os
-import re
-import math
 import numpy as np
-import itertools
+import matplotlib.pyplot as plt
 import seaborn as sns
 import plotter
 import parse_data_files
@@ -24,136 +22,11 @@ SUB = "Subject"
 INTACT = "Intact"
 SCRAMBLED = "Scrambled"
 
+AXIS_SIZE = 19
+TICK_SIZE = 17
+LABEL_PAD = 8
+
 cond_map = {parse_data_files.UAT: "UAT", parse_data_files.AT: "AT"}
-
-
-def plot_avg_gaze(all_subs_df, save_path, cond_name=" "):
-    subs = all_subs_df[SUB].unique().tolist()
-
-    intact_df = all_subs_df[[SUB, parse_data_files.SUBJ_ANS, parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT]]
-    intact_df_avg_per_sub = intact_df.groupby([SUB, parse_data_files.SUBJ_ANS]).mean().reset_index()
-    intact_df_avg_per_sub.rename(columns={parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT: "Average_Gaze"}, inplace=True)
-    intact_df_avg_per_sub["Image Type"] = True
-    scrambled_df = all_subs_df[[SUB, parse_data_files.SUBJ_ANS, parse_data_files.BUSSTOP_GAZE_DUR_AVG_SCRAMBLED]]
-    scrambled_df_avg_per_sub = scrambled_df.groupby([SUB, parse_data_files.SUBJ_ANS]).mean().reset_index()
-    scrambled_df_avg_per_sub.rename(columns={parse_data_files.BUSSTOP_GAZE_DUR_AVG_SCRAMBLED: "Average_Gaze"}, inplace=True)
-    scrambled_df_avg_per_sub["Image Type"] = False
-
-    df = pd.concat([intact_df_avg_per_sub, scrambled_df_avg_per_sub])  # one AFTER the other
-
-    ratings = [1, 2, 3, 4]
-    filler_df = pd.DataFrame(list(itertools.product(subs, ratings))).rename(columns={0: SUB, 1: parse_data_files.SUBJ_ANS})
-    result_df = pd.merge(filler_df, df, on=[SUB, parse_data_files.SUBJ_ANS], how='left')
-    #result_df.fillna(0, inplace=True)
-
-    y_name = "Gaze Duration"
-    y_save_name = re.sub(r'(?<!^)(?=[A-Z])', '_', parse_data_files.BUSSTOP_GAZE_DUR_AVG_TOTAL).lower()
-    x_name = re.sub('([A-Z])', r' \1', parse_data_files.SUBJ_ANS).title()
-    x_save_name = re.sub(r'(?<!^)(?=[A-Z])', '_', parse_data_files.SUBJ_ANS).lower()
-    x_axis = ["1", "2", "3", "4"]
-    x_axis_vals = [1, 2, 3, 4]
-
-    ymin = 0  # gaze duration cannot be negative
-    y_max_val = max(all_subs_df[parse_data_files.BUSSTOP_GAZE_DUR_AVG_TOTAL])
-    ymax = int(math.ceil(y_max_val / 10.0)) * 10  # round up to the nearest 10  - DEPRECATED, TO MAKE THE PLOTS UNIFORM ACROSS CONDITIONS
-    y_tick_skip = 1 if ymax - ymin < 11 else 5
-
-    plotter.plot_raincloud(df=df, x_col_name=parse_data_files.SUBJ_ANS,
-                           y_col_name="Average_Gaze",
-                           plot_title=f"{y_name} Per {x_name} in {cond_map[cond_name]}",
-                           plot_x_name="Subjective Awareness Rating",
-                           plot_y_name="Average Gaze Duration (Seconds)",
-                           save_path=save_path, save_name=f"{y_save_name}_over_{x_save_name}",
-                           y_tick_interval=y_tick_skip, y_tick_min=ymin, y_tick_max=7,
-                           x_axis_names=x_axis, x_values=x_axis_vals, y_tick_names=None,
-                           group_col_name="Image Type",
-                           group_name_mapping={"True": INTACT, "False": SCRAMBLED},
-                           x_col_color_order=[["#2E4052", "#2E4052", "#2E4052", "#2E4052"], ["#22577A", "#22577A", "#22577A", "#22577A"]],
-                          alpha_step=0, valpha=0.6)
-
-    df.to_csv(os.path.join(save_path, "avg_gaze_duration_per_vis_intact_scrambled.csv"))
-    return
-
-
-def analyze_valence_gaze(all_subs_df, save_path, cond_name):
-    relevant_cols = [SUB, parse_data_files.SUBJ_ANS, parse_data_files.TRIAL_NUMBER, parse_data_files.OBJ_ANS,
-                     parse_data_files.SUBJ_BUSSTOP, parse_data_files.OBJ_BUSSTOP, parse_data_files.TRIAL_STIM_VAL,
-                     parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT, parse_data_files.BUSSTOP_GAZE_DUR_AVG_SCRAMBLED]
-    df = all_subs_df[relevant_cols]
-    # first, process df into a long format and save it
-    long_df = pd.melt(df, id_vars=relevant_cols[:-2], value_vars=relevant_cols[-2:], var_name="presentation")
-    long_df.loc[:, "presentation"] = long_df["presentation"].map({parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT: "intact", parse_data_files.BUSSTOP_GAZE_DUR_AVG_SCRAMBLED: "scrambled"})
-    long_df.rename({"value": "avgBusstopGazeDuration"}, axis=1, inplace=True)
-    long_df.to_csv(os.path.join(save_path, f"avg_gaze_per_pas_long.csv"), index=False)
-
-    pas_ratings = [1, 2, 3, 4, "234"]
-    result_list = list()
-    subs = all_subs_df[SUB].unique().tolist()
-    filler_df = pd.DataFrame(subs).rename(columns={0: SUB})
-    for rating in pas_ratings:
-        if rating != "234":
-            d = df[df[parse_data_files.SUBJ_ANS] == rating]  # PAS = rating trials
-        else:  # this is for 2-3-4 collapsed
-            d = df[df[parse_data_files.SUBJ_ANS] != 1]
-        data = d.groupby([SUB, parse_data_files.TRIAL_STIM_VAL]).agg({parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT: 'mean', parse_data_files.BUSSTOP_GAZE_DUR_AVG_SCRAMBLED: 'mean'}).reset_index()
-        # now not per valence but per rating
-        data_across = d.groupby([SUB]).agg({parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT: 'mean', parse_data_files.BUSSTOP_GAZE_DUR_AVG_SCRAMBLED: 'mean'}).reset_index()
-        data_across.rename(columns={parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT: f"{parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT}_PAS{rating}_ALL",
-                                    parse_data_files.BUSSTOP_GAZE_DUR_AVG_SCRAMBLED: f"{parse_data_files.BUSSTOP_GAZE_DUR_AVG_SCRAMBLED}_PAS{rating}_ALL"}, inplace=True)
-        result_list.append(data_across)
-        for valence in [0, 1]:
-            tmp = data[data[parse_data_files.TRIAL_STIM_VAL] == valence]
-            tmp.rename(columns={parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT: f"{parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT}_PAS{rating}_VAL{valence}",
-                                parse_data_files.BUSSTOP_GAZE_DUR_AVG_SCRAMBLED: f"{parse_data_files.BUSSTOP_GAZE_DUR_AVG_SCRAMBLED}_PAS{rating}_VAL{valence}"}, inplace=True)
-            tmp.drop(columns=[parse_data_files.TRIAL_STIM_VAL], inplace=True)
-            dat = pd.merge(filler_df, tmp, on=[SUB], how="left")
-            result_list.append(dat)
-
-    result_list_by_sub = [df.set_index(SUB) for df in result_list]  # set subject as index to concatenate by
-    result_df = pd.concat(result_list_by_sub, axis=1)
-    result_df.reset_index(inplace=True)
-    result_df.to_csv(os.path.join(save_path, f"avg_gaze_per_pas.csv"), index=False)
-
-    # plot 1 v 234 average gaze duration
-    plot_res_list = list()
-    for i in [1, 2, 3, 4]:
-        for val in [0, 1]:
-            small_df = result_df[[SUB, f"{parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT}_PAS{i}_VAL{val}"]]
-            small_df[parse_data_files.SUBJ_ANS] = i
-            small_df["Stimulus"] = "Neutral" if val == 0 else "Aversive"
-            small_df.rename(columns={f"{parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT}_PAS{i}_VAL{val}": parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT}, inplace=True)
-            plot_res_list.append(small_df)
-    df_for_plot = pd.concat(plot_res_list)  # VERTICALLY
-    #df_for_plot.fillna(0, inplace=True)
-    plotter.plot_raincloud(df_for_plot, parse_data_files.SUBJ_ANS, parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT, f"Gaze Duration (Intact) Per Visibility in {cond_map[cond_name]}",
-                           "Subjective Awareness Rating", "Average Gaze Duration (Seconds)",
-                           save_path=save_path, save_name="PAS_avg_gaze_duration_intact",
-                           x_col_color_order=[["#6DB1BF", "#6DB1BF", "#6DB1BF", "#6DB1BF"],
-                                              ["#F39A9D", "#F39A9D", "#F39A9D", "#F39A9D"]],
-                           y_tick_interval=1, y_tick_min=0, y_tick_max=7,
-                           x_axis_names=["1", "2", "3", "4"], y_tick_names=None, group_col_name="Stimulus",
-                           group_name_mapping=None, x_values=[1, 2, 3, 4], alpha_step=0.05, valpha=0.8)
-
-    # in visibility-1, plot aversive v neutral
-    """
-    plot_res_list = list()
-    for i in [0, 1]:  # JUST FOR 1 AND 2-4 COLLAPSED
-        small_df = result_df[[SUB, f"{parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT}_PAS1_VAL{i}"]]
-        small_df["Valence"] = i
-        small_df.rename(columns={f"{parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT}_PAS1_VAL{i}": f"{parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT}_PAS1"}, inplace=True)
-        plot_res_list.append(small_df)
-    df_for_plot = pd.concat(plot_res_list)  # VERTICALLY
-    #df_for_plot.fillna(0, inplace=True)
-    plotter.plot_raincloud(df_for_plot, "Valence", f"{parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT}_PAS1",
-                           "Average Gaze Duration (Intact) Per Valence in Invisible Trials",
-                           "Valence", "Average Gaze Duration (Seconds)",
-                           save_path=save_path, save_name="PAS1_avg_gaze_duration_intact_per_valence",
-                           x_col_color_order=[["#6DB1BF", "#F39A9D"]],
-                           y_tick_interval=1, y_tick_min=0, y_tick_max=10,
-                           x_axis_names=["Neutral", "Aversive"], y_tick_names=None, group_col_name=None,
-                           group_name_mapping=None, x_values=[0, 1], alpha_step=0.1, valpha=0.8)
-    """
-    return
 
 
 def unify_for_comparison(cond_dict, save_path, save_name, new_col_name):
@@ -167,6 +40,245 @@ def unify_for_comparison(cond_dict, save_path, save_name, new_col_name):
     return result_df
 
 
+def analyze_valence_gaze(all_subs_df, et_output_path):
+    import matplotlib.pyplot as plt
+    pas_xs = {1: 1, 2: 2, 3: 3, 4: 4}
+    palette = {1: "#F86624", 0: "#9f9f9f"}  # aversive = 1, neutral = 0
+    valence = {1: "Aversive", 0: "Neutral"}
+    conds = ["Unattended", "Attended"]
+    plt.gcf()
+    plt.figure()
+    sns.reset_orig()
+
+    for cond in conds:
+        subs_df_cond = all_subs_df[all_subs_df[parse_data_files.CONDITION] == cond]
+        for pas in pas_xs:
+            df_pas = subs_df_cond[subs_df_cond[parse_data_files.SUBJ_ANS] == pas]
+            for val in list(palette.keys()):
+                df_val = df_pas[df_pas[parse_data_files.TRIAL_STIM_VAL] == val]
+                if not df_val.empty:  # if we even have data in this condition
+                    df_avgd = df_val.groupby([SUB]).mean().reset_index()
+                    # here we DO replace nan with 0, to reflect that nans mean that subjects looked 0 secs on the stimulus instance!
+                    df_avgd[parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT] = df_avgd[parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT].fillna(0)
+                    x_loc = pas_xs[pas]
+                    # so that conditions won't overlap
+                    if val == 1:  # aversive
+                        x_loc -= 0.05
+                    else:
+                        x_loc += 0.05
+                    y_vals = df_avgd[parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT]
+                    # plot violin
+                    violin = plt.violinplot(y_vals, positions=[x_loc], widths=0.75, showmeans=True, showextrema=False, showmedians=False)
+                    # make it a half-violin plot (only to the LEFT of center)
+                    for b in violin['bodies']:
+                        # get the center
+                        m = np.mean(b.get_paths()[0].vertices[:, 0])
+                        if val == 1:  # aversive
+                            # modify the paths to not go further right than the center
+                            b.get_paths()[0].vertices[:, 0] = np.clip(b.get_paths()[0].vertices[:, 0], -np.inf, m)
+                        else:
+                            # modify the paths to not go further left than the center
+                            b.get_paths()[0].vertices[:, 0] = np.clip(b.get_paths()[0].vertices[:, 0], m, np.inf)
+                        b.set_color(palette[val])
+
+                    # change the color of the mean lines (showmeans=True)
+                    violin['cmeans'].set_color("black")
+                    violin['cmeans'].set_linewidth(2)
+                    # control the length like before
+                    m = np.mean(violin['cmeans'].get_paths()[0].vertices[:, 0])
+                    if val == 1:  # aversive
+                        violin['cmeans'].get_paths()[0].vertices[:, 0] = np.clip(violin['cmeans'].get_paths()[0].vertices[:, 0], -np.inf, m)
+                    else:
+                        violin['cmeans'].get_paths()[0].vertices[:, 0] = np.clip(violin['cmeans'].get_paths()[0].vertices[:, 0], m, np.inf)
+
+                    # then scatter
+                    if val == 1:  # aversive
+                        scat_x = (np.ones(len(y_vals)) * (x_loc - 0.15)) + (np.random.rand(len(y_vals)) * 0.13)
+                    else:
+                        scat_x = (np.ones(len(y_vals)) * (x_loc + 0.025)) + (np.random.rand(len(y_vals)) * 0.13)
+                    plt.scatter(x=scat_x, y=y_vals, marker="o", s=50, color=palette[val], alpha=0.6, edgecolor=palette[val])
+        # cosmetics
+        plt.xticks([x for x in range(1, 5, 1)], fontsize=22)
+        plt.yticks([y for y in range(0, 7, 1)], fontsize=22)
+
+        plt.title(f"{cond}", fontsize=27, pad=13)
+        plt.ylabel("Average Gaze Duration (seconds)", fontsize=24, labelpad=8)
+        plt.xlabel("PAS Rating", fontsize=24, labelpad=8)
+
+        # The following two lines generate custom fake lines that will be used as legend entries:
+        markers = [plt.Line2D([0, 0], [0, 0], color=palette[label], marker='o', linestyle='') for label in palette]
+        new_labels = [valence[label] for label in palette]
+        legend = plt.legend(markers, new_labels, title="Valence", markerscale=1, fontsize=19)
+        plt.setp(legend.get_title(), fontsize=19)
+
+        # save plot
+        figure = plt.gcf()  # get current figure
+        figure.set_size_inches(15, 12)
+        plt.savefig(os.path.join(et_output_path, f"avg_gaze_duration_valence_INTACT_{cond}.svg"), format="svg", dpi=1000, bbox_inches='tight',pad_inches=0.01)
+        del figure
+        plt.close()
+    return
+
+
+def time_analysis(df, save_path, y_col, y_col_name, save_name):
+    df_uat = df[df[parse_data_files.CONDITION] == "Unattended"]  # clues matter only during the game-phase
+    # avg per sub
+    clues_per_sub = df_uat.groupby([SUB]).mean(numeric_only=True).reset_index()  # average within-subject
+    clues_per_sub_avg = clues_per_sub[[SUB, y_col]]
+    clues_per_sub_avg.to_csv(os.path.join(save_path, f"{save_name}_per_sub.csv"), index=False)
+    # avg in time, ACROSS subjects
+    clues_per_trial = df_uat.groupby([parse_data_files.TRIAL_NUMBER]).mean(numeric_only=True).reset_index()
+    clues_per_trial_avg = clues_per_trial[[parse_data_files.TRIAL_NUMBER, y_col]]
+    clues_per_trial_avg.rename({y_col: f"{y_col_name} Avg"}, axis=1, inplace=True)
+    clues_per_trial_std = df_uat.groupby([parse_data_files.TRIAL_NUMBER]).std().reset_index()
+    clues_per_trial_std = clues_per_trial_std[[parse_data_files.TRIAL_NUMBER, y_col]]
+    clues_per_trial_std.rename({y_col: f"{y_col_name} SD"}, axis=1, inplace=True)
+    clues_per_trial = pd.merge(clues_per_trial_avg, clues_per_trial_std, on=parse_data_files.TRIAL_NUMBER, how='outer')
+    clues_per_trial.to_csv(os.path.join(save_path, f"{save_name}_per_trial.csv"), index=False)
+    return clues_per_trial
+
+
+def trial_gaze_analysis(df, save_path):
+    gaze_per_trial = time_analysis(df=df, save_path=os.path.join(save_path, "unattended"),
+                                   y_col=parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT, y_col_name="Gaze",
+                                   save_name="gaze_avg")
+
+    # PLOT
+    uat_trials = df[df[parse_data_files.TRIAL_NUMBER] < 40]
+    uat_trials = uat_trials.loc[:, [SUB, parse_data_files.TRIAL_NUMBER, parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT]]
+
+    plt.clf()
+    plt.figure()
+    sns.reset_orig()
+    subs = sorted(list(uat_trials[SUB].unique()))
+    # individual lines' colors; change color to color="#CBD2D0" to have them all the same
+    colormap = plt.cm.BrBG  # choose colormap: http://matplotlib.org/1.2.1/examples/pylab_examples/show_colormaps.html
+    colors = [colormap(i) for i in np.linspace(0, 1, len(subs))]
+    for i in range(len(subs)):  # plot individual data lines
+        sub = subs[i]
+        sub_trials = uat_trials[uat_trials[SUB] == sub]
+        sns.lineplot(x=parse_data_files.TRIAL_NUMBER, y=parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT, data=sub_trials, color=colors[i], label="", linewidth=1, alpha=0.8)
+    # now plot average line
+    sns.lineplot(x=parse_data_files.TRIAL_NUMBER, y="Gaze Avg", data=gaze_per_trial, color="#4C5454", label="", linewidth=4)
+    # cosmetics
+    plt.xticks(fontsize=plotter.F_AXES_NAME)
+    plt.title("Gaze Duration Per Trial", fontsize=plotter.F_TITLE, pad=plotter.LABELPAD)
+    plt.xlabel("Trial Number", fontsize=plotter.F_AXES_TITLE, labelpad=plotter.LABELPAD)
+    plt.ylabel("Gaze Duration (Seconds)", fontsize=plotter.F_AXES_TITLE, labelpad=plotter.LABELPAD)
+    plt.legend().remove()
+    # save
+    figure = plt.gcf()  # get current figure
+    plt.savefig(os.path.join(save_path, parse_data_files.UAT, f"{plotter.LINE}_gaze_avg_per_trial.png"), dpi=plotter.DPI, bbox_inches='tight')
+    del figure
+    plt.clf()
+    plt.cla()
+    plt.close()
+    return
+
+
+def gaze_dur_pas(att_avg_gaze, uat_avg_gaze, save_path):
+    pas_xs = {1: 1, 2: 2, 3: 3, 4: 4}
+    palette = {"Unattended": {"intact": "#e5625e", "scrambled": "#f7b2bd"}, "Attended": {"intact": "#034078", "scrambled": "#1282a2"}}
+    conds = {"Unattended": uat_avg_gaze, "Attended": att_avg_gaze}
+    plt.gcf()
+    plt.figure()
+    sns.reset_orig()
+    for cond in list(conds.keys()):
+        df_cond = conds[cond]
+        colors_cond = palette[cond]
+        for pas in pas_xs:
+            df_pas = df_cond[df_cond['subjectiveAwareness'] == pas]
+            if not df_pas.empty:
+                for presentation in list(colors_cond.keys()):
+                    df_pres = df_pas[df_pas['presentation'] == presentation]
+                    if not df_pres.empty:  # if we even have data in this condition
+                        df_pres = df_pres[df_pres["avgBusstopGazeDuration"].notna()]
+                        color = colors_cond[presentation]
+                        x_loc = pas_xs[pas]
+                        # so that conditions won't overlap
+                        if presentation == "intact":
+                            x_loc -= 0.05
+                        else:
+                            x_loc += 0.05
+                        y_vals = df_pres["avgBusstopGazeDuration"]
+                        # plot violin
+                        violin = plt.violinplot(y_vals, positions=[x_loc], widths=0.75, showmeans=True, showextrema=False, showmedians=False)
+                        # make it a half-violin plot (only to the LEFT of center)
+                        for b in violin['bodies']:
+                            # get the center
+                            m = np.mean(b.get_paths()[0].vertices[:, 0])
+                            if presentation == "intact":
+                                # modify the paths to not go further right than the center
+                                b.get_paths()[0].vertices[:, 0] = np.clip(b.get_paths()[0].vertices[:, 0], -np.inf, m)
+                            else:
+                                # modify the paths to not go further left than the center
+                                b.get_paths()[0].vertices[:, 0] = np.clip(b.get_paths()[0].vertices[:, 0], m, np.inf)
+                            b.set_color(color)
+
+                        # change the color of the mean lines (showmeans=True)
+                        violin['cmeans'].set_color("black")
+                        violin['cmeans'].set_linewidth(2)
+                        # control the length like before
+                        m = np.mean(violin['cmeans'].get_paths()[0].vertices[:, 0])
+                        if presentation == "intact":
+                            violin['cmeans'].get_paths()[0].vertices[:, 0] = np.clip(violin['cmeans'].get_paths()[0].vertices[:, 0], -np.inf, m)
+                        else:
+                            violin['cmeans'].get_paths()[0].vertices[:, 0] = np.clip(violin['cmeans'].get_paths()[0].vertices[:, 0], m, np.inf)
+
+                        # then scatter
+                        if presentation == "intact":
+                            scat_x = (np.ones(len(y_vals)) * (x_loc - 0.15)) + (np.random.rand(len(y_vals)) * 0.13)
+                        else:
+                            scat_x = (np.ones(len(y_vals)) * (x_loc + 0.025)) + (np.random.rand(len(y_vals)) * 0.13)
+                        plt.scatter(x=scat_x, y=y_vals, marker="o", s=50, color=color, alpha=0.6, edgecolor=color)
+
+        # cosmetics
+        plt.xticks([x for x in range(1, 5, 1)], fontsize=TICK_SIZE + 5)
+        plt.yticks([y for y in range(0, 10, 1)], fontsize=TICK_SIZE + 5)
+
+        plt.title(f"{cond}", fontsize=AXIS_SIZE + 8, pad=LABEL_PAD + 5)
+        plt.ylabel("Average Gaze Duration (seconds)", fontsize=AXIS_SIZE + 5, labelpad=LABEL_PAD)
+        plt.xlabel("PAS Rating", fontsize=AXIS_SIZE + 5, labelpad=LABEL_PAD)
+
+        # The following two lines generate custom fake lines that will be used as legend entries:
+        markers = [plt.Line2D([0, 0], [0, 0], color=colors_cond[presentation], marker='o', linestyle='') for presentation in list(colors_cond.keys())]
+        new_labels = [label.title() for label in list(colors_cond.keys())]
+        legend = plt.legend(markers, new_labels, title="Condition", markerscale=1, fontsize=TICK_SIZE + 2)
+        plt.setp(legend.get_title(), fontsize=TICK_SIZE + 2)
+
+        # save plot
+        figure = plt.gcf()  # get current figure
+        figure.set_size_inches(15, 12)
+        plt.savefig(os.path.join(save_path, f"busstop_gaze_dur_total_avg_{cond}.svg"), format="svg", dpi=1000, bbox_inches='tight', pad_inches=0.01)
+        del figure
+        plt.close()
+    return
+
+
+def gaze_per_cond(subs_df_cond, cond_output_path):
+    relevant_cols = [SUB, parse_data_files.SUBJ_ANS, parse_data_files.TRIAL_NUMBER, parse_data_files.OBJ_ANS,
+                     parse_data_files.SUBJ_BUSSTOP, parse_data_files.OBJ_BUSSTOP, parse_data_files.TRIAL_STIM_VAL,
+                     parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT, parse_data_files.BUSSTOP_GAZE_DUR_AVG_SCRAMBLED]
+    df = subs_df_cond[relevant_cols]
+    # process df into a long format and save it
+    long_df = pd.melt(df, id_vars=relevant_cols[:-2], value_vars=relevant_cols[-2:], var_name="presentation")
+    long_df.loc[:, "presentation"] = long_df["presentation"].map(
+        {parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT: "intact",
+         parse_data_files.BUSSTOP_GAZE_DUR_AVG_SCRAMBLED: "scrambled"})
+    long_df.rename({"value": "avgBusstopGazeDuration"}, axis=1, inplace=True)
+    long_df.to_csv(os.path.join(cond_output_path, f"avg_gaze_per_pas_long.csv"), index=False)
+
+    # for t-tests
+    df_per_sub = long_df.groupby([SUB, "presentation"]).mean().reset_index().loc[:, [SUB, "presentation", "avgBusstopGazeDuration"]]
+    df_per_sub_intact = df_per_sub[df_per_sub["presentation"] == "intact"].loc[:, [SUB, "avgBusstopGazeDuration"]]
+    df_per_sub_intact.rename({"avgBusstopGazeDuration": "avgGaze_intact"}, axis=1, inplace=True)
+    df_per_sub_scrmbld = df_per_sub[df_per_sub["presentation"] != "intact"].loc[:, [SUB, "avgBusstopGazeDuration"]]
+    df_per_sub_scrmbld.rename({"avgBusstopGazeDuration": "avgGaze_scrambled"}, axis=1, inplace=True)
+    df_per_sub_unified = pd.merge(df_per_sub_intact, df_per_sub_scrmbld, on=SUB)
+    df_per_sub_unified.to_csv(os.path.join(cond_output_path, f"avg_gaze_per_sub_presentation.csv"), index=False)
+    return
+
+
 def et_analysis(all_subs_df, save_path):
 
     # A result folder
@@ -174,21 +286,41 @@ def et_analysis(all_subs_df, save_path):
     if not (os.path.isdir(et_output_path)):
         os.mkdir(et_output_path)
 
+    if not (os.path.isdir(os.path.join(et_output_path, parse_data_files.AT))):
+        os.mkdir(os.path.join(et_output_path, parse_data_files.AT))
+
+    if not (os.path.isdir(os.path.join(et_output_path, parse_data_files.UAT))):
+        os.mkdir(os.path.join(et_output_path, parse_data_files.UAT))
+
+    # GAZE (INTACT) PER TRIAL
+    trial_gaze_analysis(df=all_subs_df, save_path=et_output_path)
+
+    # create per condition
     conds = {parse_data_files.UAT: all_subs_df[all_subs_df[parse_data_files.TRIAL_NUMBER] < 40],
              parse_data_files.AT: all_subs_df[all_subs_df[parse_data_files.TRIAL_NUMBER] >= 40]}
-
     for condition in conds:  # separate ET analysis between attended from unattended trials
         cond_output_path = os.path.join(et_output_path, condition)
-        if not (os.path.isdir(cond_output_path)):
-            os.mkdir(cond_output_path)
-
         subs_df_cond = conds[condition]
+        gaze_per_cond(subs_df_cond, cond_output_path)
 
-        # Descriptive: For each visibility rating, do they gaze at the stimuli?
-        plot_avg_gaze(subs_df_cond, cond_output_path, condition)
-
-        # ANALYSIS : is there a difference in gaze patterns between aversive and neutral stimuli within each visibility rating?
-        analyze_valence_gaze(subs_df_cond, cond_output_path, condition)
+    # GAZE DURATION (INTACT) PER TRIAL SEPARATELY FOR AVERSIVE AND NEUTRAL TRIALS
+    analyze_valence_gaze(all_subs_df, et_output_path)
+    val_cond_df = all_subs_df.groupby([SUB, parse_data_files.CONDITION, parse_data_files.SUBJ_ANS,
+                                       parse_data_files.TRIAL_STIM_VAL]).mean().reset_index().loc[:,
+                  [SUB, parse_data_files.CONDITION, parse_data_files.SUBJ_ANS, parse_data_files.TRIAL_STIM_VAL,
+                   parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT]]
+    for condition in ["Attended", "Unattended"]:
+        val_df = val_cond_df[val_cond_df[parse_data_files.CONDITION] == condition]
+        pas = 1 if condition == "Unattended" else 4
+        df = val_df[val_df[parse_data_files.SUBJ_ANS] == pas]
+        df_aversive = df[df[parse_data_files.TRIAL_STIM_VAL] == 1]
+        df_aversive.drop(columns=[parse_data_files.TRIAL_STIM_VAL, parse_data_files.SUBJ_ANS, parse_data_files.CONDITION], inplace=True)
+        df_aversive.rename({parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT: f"gazeIntact_pas{pas}_aversive"}, axis=1, inplace=True)
+        df_neutral = df[df[parse_data_files.TRIAL_STIM_VAL] != 1]
+        df_neutral.drop(columns=[parse_data_files.TRIAL_STIM_VAL, parse_data_files.SUBJ_ANS, parse_data_files.CONDITION], inplace=True)
+        df_neutral.rename({parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT: f"gazeIntact_pas{pas}_neutral"}, axis=1, inplace=True)
+        df_result = pd.merge(df_aversive, df_neutral, on=SUB)
+        df_result.to_csv(os.path.join(et_output_path, condition, "avg_gaze_duration_valence.csv"), index=False)
 
     # create comparison
     comp_output_path = os.path.join(et_output_path, "comparison")
@@ -202,7 +334,16 @@ def et_analysis(all_subs_df, save_path):
         avg_gaze_in_cond = pd.read_csv(os.path.join(cond_output_path, f"avg_gaze_per_pas_long.csv"))
         avg_gaze[condition] = avg_gaze_in_cond
 
+    # GAZE DURATION PER PAS SCORE SEPARATELY FOR THE ATTENDED AND UNATTENDED CONDITIONS (PER PRESENTATION TYPE)
+    gaze_dur_pas(att_avg_gaze=avg_gaze[parse_data_files.AT], uat_avg_gaze=avg_gaze[parse_data_files.UAT], save_path=et_output_path)
+
     unified_df = unify_for_comparison(avg_gaze, comp_output_path, f"avg_gaze_per_pas_long.csv", "condition")
     unified_df_intact = unified_df[unified_df["presentation"] == "intact"]
     unified_df_intact.to_csv(os.path.join(comp_output_path, f"avg_gaze_per_pas_long_intact.csv"), index=False)
+
+    # for t-tests per trial
+    avg_gaze_per_trial_pas1_intact = all_subs_df[all_subs_df[parse_data_files.SUBJ_ANS] == 1]
+    avg_gaze_per_trial_pas1_intact = avg_gaze_per_trial_pas1_intact.loc[:, [SUB, parse_data_files.SUBJ_ANS, parse_data_files.BUSSTOP_GAZE_DUR_AVG_INTACT]]
+    avg_gaze_per_trial_pas1_intact.to_csv(os.path.join(et_output_path, "avg_gaze_per_trial_pas1_intact.csv"), index=False)
+
     return

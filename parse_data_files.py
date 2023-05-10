@@ -898,7 +898,7 @@ def extract_subject_data(sub_folder_path, sub_res_path):
                 sub_busstop_gaze_data.to_csv(os.path.join(sub_output_path, "sub_busstop_gaze_data.csv"), index=False)
             else:
                 print(f"No gaze data for subject {sub}")
-        # parse subject empatica data
+        # parse subject Empatica data
         sub_trial_data, sub_peripheral_data = empatica_parser.load_sub_peripheral_data(sub_path, sub_trial_data, sub_busstop_gaze_data, sub_output_path, sub, sub_res_path)
         subject_data[sub] = {UNITY_OUTPUT_FOLDER: sub_trial_data, empatica_parser.EMPATICA_OUTPUT_FOLDER: sub_peripheral_data, ET_DATA_NAME: sub_busstop_gaze_data}
 

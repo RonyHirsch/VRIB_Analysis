@@ -157,12 +157,6 @@ def make_it_rain(df, x_col_name, y_col_name, x_col_color_order, violin_alpha=VIO
             else:
                 scat_x = (np.ones(len(data)) * (positions_list[c] + 0.09)) + (np.random.rand(len(data)) * 0.09)
             plt.scatter(x=scat_x, y=data, marker="o", color=x_col_color_order[c], alpha=marker_alpha, s=SCATTER_MARKER_SIZE, edgecolor=x_col_color_order[c])
-
-            # complete with a boxplot
-            #plt.boxplot(data, positions=[positions_list[c] + VIOLIN_OFFSET], notch=False,
-            #            medianprops=dict(color='black', linewidth=LINE_WIDTH),
-            #            showfliers=False)
-
     return vio
 
 

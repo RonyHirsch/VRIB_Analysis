@@ -303,7 +303,7 @@ def et_analysis(all_subs_df, save_path):
         subs_df_cond = conds[condition]
         gaze_per_cond(subs_df_cond, cond_output_path)
 
-    # GAZE DURATION (INTACT) PER TRIAL SEPARATELY FOR AVERSIVE AND NEUTRAL TRIALS
+    # GAZE DURATION (INTACT) PER TRIAL SEPARATELY FOR AVERSIVE AND NEUTRAL TRIALS!
     analyze_valence_gaze(all_subs_df, et_output_path)
     val_cond_df = all_subs_df.groupby([SUB, parse_data_files.CONDITION, parse_data_files.SUBJ_ANS,
                                        parse_data_files.TRIAL_STIM_VAL]).mean().reset_index().loc[:,

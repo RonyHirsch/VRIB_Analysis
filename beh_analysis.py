@@ -176,7 +176,7 @@ def pas_comparison_cond(all_subs_df, save_path):
     legend = plt.legend(markers, new_labels, title="Condition", markerscale=1, fontsize=TICK_SIZE + 2)
     plt.setp(legend.get_title(), fontsize=TICK_SIZE + 2)
 
-    # save plot
+    # Save plot
     figure = plt.gcf()  # get current figure
     figure.set_size_inches(15, 12)
     plt.savefig(os.path.join(save_path, f"PAS_comp_task.svg"), format="svg", dpi=1000, bbox_inches='tight', pad_inches=0.01)

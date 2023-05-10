@@ -45,9 +45,15 @@ def manage_analyses(data_path, save_path):
 
 
 if __name__ == "__main__":
-    manage_analyses(data_path=r"prereg\raw",
-                    save_path=r"prereg\processed")
+    orig_stdout = sys.stdout
+    f = open(os.path.join(r"\prereg\processed", "output_log.txt"), 'w')
+    sys.stdout = f
 
+    manage_analyses(data_path=r"\prereg\raw",
+                    save_path=r"\prereg\processed")
+
+    sys.stdout = orig_stdout
+    f.close()
 
 
 

@@ -1,7 +1,14 @@
 # Multi-trial Inattentional Blindness in Virtual Reality : Analysis
 
-This code handles data that is the output of the VRIB paradigm (see https://osf.io/6jyqx).
-In our paradigm (a VR multi-trial IB paradigm, henceforth VRIB), subjects are immersed in an urban environment while engaged in a task of following a target bee out of a group of three bees. 
+This code handles data that is the output of the VRIB paradigm (see https://osf.io/6jyqx). 
+
+## Demo
+
+[![VRIB Paradigm](http://img.youtube.com/vi/koUr8d4qlR4/0.jpg)](https://youtu.be/koUr8d4qlR4 "Multi-trial Inattentional Blindness in Virtual Reality")
+
+## About
+
+In our paradigm (a VR multi-trial IB paradigm, henceforth VRIB), participants are immersed in an urban environment while engaged in a task of following a target bee out of a group of three bees. 
 Meanwhile, critical stimuli (taken from IAPS database: Bradley and Lang, 2007) are embedded in the city street. 
 Each trial contains ten presentations of a single critical stimulus; in three of them, the stimulus image is intact, and in seven, a scrambled version of it appears. 
 At the end of each trial, subjects are asked to select the target bee, rate the critical stimulus’ visibility on the Perceptual Awareness Scale (PAS; Ramsøy and Overgaard, 2004, a four-item scale where: 1=no experience, 2=brief glimpse, 3=almost clear experience, 4=clear experience) and select the stimulus image out of an array of four images (a 4-alternative forced choice task; 4AFC, an objective measure of awareness). 

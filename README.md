@@ -1,6 +1,7 @@
 # Multi-trial Inattentional Blindness in Virtual Reality : Analysis
 
 This code handles data that is the output of the VRIB paradigm (see [OSF project](https://osf.io/648bp/?view_only=c0993dfb69a9473e95f78a76627735c5)). 
+The experiment paradigm can be found in the "experiment" folder. All the rest are codes used to parse and analyze the experimental output.
 
 ## Demo
 
